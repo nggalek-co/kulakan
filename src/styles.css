@@ -3,6 +3,11 @@
 
 :root,
 :is(.light, [data-theme="light"]) {
+  --sp-semantic-color-background: #ffffff;
+  --sp-semantic-color-surface: #ffffff;
+  --sp-semantic-color-card: #ffffff;
+  --sp-rw-bg-canvas: #ffffff;
+  --sp-rw-bg-surface: #ffffff;
   --sp-rw-bg-accent: #059669;
   --sp-rw-fg-accent: #047857;
   --sp-rw-fg-on-accent: #ffffff;
@@ -32,4 +37,5 @@ body,
 
 body {
   margin: 0;
+  background-color: #ffffff;
 }

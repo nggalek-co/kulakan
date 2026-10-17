@@ -370,9 +370,9 @@ function KulakanHomePage() {
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground antialiased">
+    <div className="min-h-screen bg-white text-foreground antialiased dark:bg-slate-950">
       {/* Top Navigation */}
-      <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-sm">
+      <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-100 dark:bg-slate-950/90 dark:border-slate-800">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3.5 sm:px-6">
           <KulakanLogo
             onClick={() => {
@@ -469,7 +469,7 @@ function KulakanHomePage() {
                 key={term}
                 type="button"
                 onClick={() => handleQuickSearch(term)}
-                className="rounded-md border border-(length:--sp-rw-border-default) border-(--sp-rw-border-translucent) bg-background px-2.5 py-1 text-xs font-medium text-foreground hover:bg-muted transition-colors cursor-pointer"
+                className="rounded-md border border-slate-200/90 bg-slate-50/80 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition-colors cursor-pointer dark:bg-slate-900/60 dark:border-slate-800 dark:text-slate-300"
               >
                 {term}
               </button>
@@ -596,7 +596,7 @@ function KulakanHomePage() {
           {/* TAB 1: Daftar Harga */}
           <TabsPanel value="daftar-harga" className="mt-4 space-y-4">
             {/* Filter Bar */}
-            <div className="flex flex-col gap-3 rounded-lg border border-(length:--sp-rw-border-default) border-(--sp-rw-border-translucent) bg-muted/10 p-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-3 rounded-xl border border-slate-200/80 bg-slate-50/70 p-3.5 sm:flex-row sm:items-center sm:justify-between dark:bg-slate-900/40 dark:border-slate-800">
               {/* Category selector */}
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-bold text-foreground mr-1">Kategori:</span>
@@ -737,12 +737,12 @@ function KulakanHomePage() {
                     <Card
                       key={item.id}
                       variant="raised"
-                      className="flex flex-col justify-between rounded-xl border border-slate-200/80 bg-slate-50/60 p-4.5 shadow-2xs hover:border-slate-300 hover:shadow-xs transition-all dark:bg-slate-900/40 dark:border-slate-800"
+                      className="flex flex-col justify-between rounded-xl border border-slate-200/90 bg-white p-4.5 shadow-xs hover:border-slate-300 hover:shadow-md transition-all dark:bg-slate-900/40 dark:border-slate-800"
                     >
                       <div>
                         {/* Top: Category & Status Badge */}
                         <div className="flex items-center justify-between gap-2">
-                          <span className="inline-flex items-center rounded-md bg-slate-200/80 dark:bg-slate-800 px-2.5 py-1 text-xs font-semibold text-slate-800 dark:text-slate-200">
+                          <span className="inline-flex items-center rounded-md bg-slate-100 dark:bg-slate-800 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:text-slate-300 border border-slate-200/60 dark:border-slate-700/60">
                             {item.categoryLabel}
                           </span>
 
@@ -802,7 +802,7 @@ function KulakanHomePage() {
                       </div>
 
                       {/* Card Footer */}
-                      <div className="mt-4 pt-3 border-t border-slate-200/70 dark:border-slate-800 flex items-center justify-between text-xs text-muted-foreground">
+                      <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-muted-foreground">
                         <span>
                           {selectedMarket === 'all'
                             ? `Rentang: ${formatRupiah(minPrice)} - ${formatRupiah(maxPrice)}`
@@ -817,7 +817,7 @@ function KulakanHomePage() {
             ) : (
               <Card
                 variant="raised"
-                className="overflow-hidden bg-slate-50/50 border border-slate-200/80 shadow-xs dark:bg-slate-900/30 dark:border-slate-800/50"
+                className="overflow-hidden bg-white border border-slate-200/90 shadow-xs dark:bg-slate-900/30 dark:border-slate-800/50"
               >
                 <Table
                   aria-label="Tabel Harga Komoditas Pasar Trenggalek"
@@ -946,7 +946,7 @@ function KulakanHomePage() {
       {/* TAB 2: Bandingkan Pasar */}
       <TabsPanel value="pasar-termurah" className="mt-4 space-y-4">
         {/* Filter Bar for Tab 2 */}
-        <div className="flex flex-col gap-3 rounded-lg border border-(length:--sp-rw-border-default) border-(--sp-rw-border-translucent) bg-muted/10 p-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 rounded-xl border border-slate-200/80 bg-slate-50/70 p-3.5 sm:flex-row sm:items-center sm:justify-between dark:bg-slate-900/40 dark:border-slate-800">
           {/* Category selector */}
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm font-bold text-foreground mr-1">Kategori:</span>
@@ -1049,7 +1049,7 @@ function KulakanHomePage() {
               <Card
                 key={item.id}
                 variant="raised"
-                className="bg-slate-50/50 border border-slate-200/80 shadow-xs dark:bg-slate-900/30 dark:border-slate-800/50"
+                className="bg-white border border-slate-200/90 shadow-xs hover:border-slate-300 hover:shadow-md transition-all dark:bg-slate-900/30 dark:border-slate-800/50"
               >
                 <CardHeader>
                   <div>
@@ -1141,7 +1141,7 @@ function KulakanHomePage() {
           <div className="space-y-4 lg:col-span-7">
             <Card
               variant="raised"
-              className="bg-slate-50/50 border border-slate-200/80 shadow-xs dark:bg-slate-900/30 dark:border-slate-800/50"
+              className="bg-white border border-slate-200/90 shadow-xs dark:bg-slate-900/30 dark:border-slate-800/50"
             >
               <CardHeader>
                 <CardTitle className="text-base font-semibold">
@@ -1154,7 +1154,7 @@ function KulakanHomePage() {
 
               <CardPanel className="space-y-4">
                 {/* Add Item Row */}
-                <div className="flex flex-col gap-2 rounded-lg border border-slate-200/80 bg-slate-100/80 dark:bg-slate-900/40 p-3 sm:flex-row sm:items-center">
+                <div className="flex flex-col gap-2 rounded-xl border border-slate-200/80 bg-slate-50/80 dark:bg-slate-900/40 p-3 sm:flex-row sm:items-center">
                   <div className="flex-1">
                     <Select
                       value={selectedCommodityToAdd}
@@ -1253,7 +1253,7 @@ function KulakanHomePage() {
           <div className="space-y-4 lg:col-span-5">
             <Card
               variant="raised"
-              className="bg-slate-50/50 border border-slate-200/80 shadow-xs dark:bg-slate-900/30 dark:border-slate-800/50"
+              className="bg-white border border-slate-200/90 shadow-xs dark:bg-slate-900/30 dark:border-slate-800/50"
             >
               <CardHeader>
                 <CardTitle className="text-base font-semibold">
@@ -1291,7 +1291,7 @@ function KulakanHomePage() {
                   <div className="text-xs font-semibold text-muted-foreground">
                     Urutan Semua Pasar:
                   </div>
-                  <div className="divide-y divide-slate-200/70 dark:divide-slate-800/60 rounded-lg border border-slate-200/80 bg-background/90 dark:bg-slate-900/40 p-2">
+                  <div className="divide-y divide-slate-200/70 dark:divide-slate-800/60 rounded-xl border border-slate-200/80 bg-slate-50/70 dark:bg-slate-900/40 p-2">
                     {cartSummary.map((m, index) => {
                       const diff = m.total - cheapestMarket.total
                       return (
@@ -1331,7 +1331,7 @@ function KulakanHomePage() {
             <Card
               key={market.id}
               variant="raised"
-              className="flex flex-col justify-between bg-slate-50/50 border border-slate-200/80 shadow-xs dark:bg-slate-900/30 dark:border-slate-800/50"
+              className="flex flex-col justify-between bg-white border border-slate-200/90 shadow-xs hover:border-slate-300 hover:shadow-md transition-all dark:bg-slate-900/30 dark:border-slate-800/50"
             >
               <div>
                 <CardHeader>
@@ -1391,7 +1391,7 @@ function KulakanHomePage() {
   </main>
 
   {/* Footer */}
-  <footer className="mt-16 border-t border-(length:--sp-rw-border-default) border-(--sp-rw-border-translucent) bg-muted/10 py-10">
+  <footer className="mt-16 border-t border-slate-200/80 bg-slate-50/70 py-10 dark:bg-slate-900/30 dark:border-slate-800">
     <div className="mx-auto max-w-6xl px-4 sm:px-6">
       <div className="flex flex-col items-center justify-between gap-4 text-center sm:flex-row sm:text-left">
         <div>

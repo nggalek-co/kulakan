@@ -489,95 +489,6 @@ function KulakanHomePage() {
 
       {/* Main Container */}
       <main className="mx-auto max-w-6xl space-y-6 px-4 py-8 sm:px-6">
-        {/* Highlight Summary Cards */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {/* Card: Lagi Turun */}
-          <Card
-            variant="raised"
-            className="bg-emerald-50/70 border border-emerald-200/80 shadow-xs dark:bg-emerald-950/20 dark:border-emerald-800/40"
-          >
-            <CardHeader className="pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="flex size-9 items-center justify-center rounded-lg bg-emerald-700 text-white shadow-2xs">
-                  <TrendingDownIcon className="size-5 text-white" />
-                </div>
-                <div>
-                  <CardTitle className="text-base font-bold text-foreground">
-                    Harga Turun
-                  </CardTitle>
-                  <CardDescription className="text-xs text-muted-foreground">
-                    Lagi turun harga hari ini
-                  </CardDescription>
-                </div>
-              </div>
-            </CardHeader>
-            <CardPanel className="space-y-3">
-              <div className="divide-y divide-emerald-200/60 dark:divide-emerald-900/40">
-                {topFalling.map((item) => (
-                  <div key={item.id} className="flex items-center justify-between py-2.5">
-                    <div>
-                      <div className="font-bold text-sm sm:text-base text-foreground">
-                        {item.name}
-                      </div>
-                      <div className="text-xs sm:text-sm text-muted-foreground">
-                        Rata-rata: {formatRupiah(item.currentPrice)} / {item.unit}
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-mono text-base sm:text-lg font-extrabold text-emerald-800 dark:text-emerald-300">
-                        -{formatRupiah(Math.abs(item.changeRp))}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardPanel>
-          </Card>
-
-          {/* Card: Lagi Naik */}
-          <Card
-            variant="raised"
-            className="bg-rose-50/70 border border-rose-200/80 shadow-xs dark:bg-rose-950/20 dark:border-rose-800/40"
-          >
-            <CardHeader className="pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="flex size-9 items-center justify-center rounded-lg bg-[#741221] text-white shadow-2xs dark:bg-[#881a2c]">
-                  <TrendingUpIcon className="size-5 text-white" />
-                </div>
-                <div>
-                  <CardTitle className="text-base font-bold text-foreground">
-                    Harga Naik
-                  </CardTitle>
-                  <CardDescription className="text-xs text-muted-foreground">
-                    Lagi naik harga hari ini
-                  </CardDescription>
-                </div>
-              </div>
-            </CardHeader>
-            <CardPanel className="space-y-3">
-              <div className="divide-y divide-rose-200/60 dark:divide-rose-900/40">
-                {topRising.map((item) => (
-                  <div key={item.id} className="flex items-center justify-between py-2.5">
-                    <div>
-                      <div className="font-bold text-sm sm:text-base text-foreground">
-                        {item.name}
-                      </div>
-                      <div className="text-xs sm:text-sm text-muted-foreground">
-                        Rata-rata: {formatRupiah(item.currentPrice)} / {item.unit}
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-mono text-base sm:text-lg font-extrabold text-[#741221] dark:text-rose-300">
-                        +{formatRupiah(item.changeRp)}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardPanel>
-          </Card>
-        </div>
-
         {/* Navigation Tabs */}
         <Tabs value={activeTab} onValueChange={(val) => handleTabChange(val as string)}>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between pb-2">
@@ -594,7 +505,96 @@ function KulakanHomePage() {
           </div>
 
           {/* TAB 1: Daftar Harga */}
-          <TabsPanel value="daftar-harga" className="mt-4 space-y-4">
+          <TabsPanel value="daftar-harga" className="mt-4 space-y-6">
+            {/* Highlight Summary Cards */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {/* Card: Lagi Turun */}
+              <Card
+                variant="raised"
+                className="bg-emerald-50/70 border border-emerald-200/80 shadow-xs dark:bg-emerald-950/20 dark:border-emerald-800/40"
+              >
+                <CardHeader className="pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex size-9 items-center justify-center rounded-lg bg-emerald-700 text-white shadow-2xs">
+                      <TrendingDownIcon className="size-5 text-white" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-base font-bold text-foreground">
+                        Harga Turun
+                      </CardTitle>
+                      <CardDescription className="text-xs text-muted-foreground">
+                        Lagi turun harga hari ini
+                      </CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardPanel className="space-y-3">
+                  <div className="divide-y divide-emerald-200/60 dark:divide-emerald-900/40">
+                    {topFalling.map((item) => (
+                      <div key={item.id} className="flex items-center justify-between py-2.5">
+                        <div>
+                          <div className="font-bold text-sm sm:text-base text-foreground">
+                            {item.name}
+                          </div>
+                          <div className="text-xs sm:text-sm text-muted-foreground">
+                            Rata-rata: {formatRupiah(item.currentPrice)} / {item.unit}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-mono text-base sm:text-lg font-extrabold text-emerald-800 dark:text-emerald-300">
+                            -{formatRupiah(Math.abs(item.changeRp))}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardPanel>
+              </Card>
+
+              {/* Card: Lagi Naik */}
+              <Card
+                variant="raised"
+                className="bg-rose-50/70 border border-rose-200/80 shadow-xs dark:bg-rose-950/20 dark:border-rose-800/40"
+              >
+                <CardHeader className="pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex size-9 items-center justify-center rounded-lg bg-[#741221] text-white shadow-2xs dark:bg-[#881a2c]">
+                      <TrendingUpIcon className="size-5 text-white" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-base font-bold text-foreground">
+                        Harga Naik
+                      </CardTitle>
+                      <CardDescription className="text-xs text-muted-foreground">
+                        Lagi naik harga hari ini
+                      </CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardPanel className="space-y-3">
+                  <div className="divide-y divide-rose-200/60 dark:divide-rose-900/40">
+                    {topRising.map((item) => (
+                      <div key={item.id} className="flex items-center justify-between py-2.5">
+                        <div>
+                          <div className="font-bold text-sm sm:text-base text-foreground">
+                            {item.name}
+                          </div>
+                          <div className="text-xs sm:text-sm text-muted-foreground">
+                            Rata-rata: {formatRupiah(item.currentPrice)} / {item.unit}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-mono text-base sm:text-lg font-extrabold text-[#741221] dark:text-rose-300">
+                            +{formatRupiah(item.changeRp)}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardPanel>
+              </Card>
+            </div>
+
             {/* Filter Bar */}
             <div className="flex flex-col gap-3 rounded-xl border border-slate-200/80 bg-slate-50/70 p-3.5 sm:flex-row sm:items-center sm:justify-between dark:bg-slate-900/40 dark:border-slate-800">
               {/* Category selector */}

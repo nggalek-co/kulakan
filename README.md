@@ -1,196 +1,101 @@
-Welcome to your new TanStack Start app!
+# Kulakan
 
-# Getting Started
+Cek dan bandingkan harga kebutuhan pokok harian di pasar-pasar Trenggalek.
 
-To run this application:
+Data harga diambil **secara langsung (live)** dari
+[SISKAPERBAPO](https://siskaperbapo.jatimprov.go.id) — Sistem Informasi Harga
+Kebutuhan Pokok Disperindag Provinsi Jawa Timur — setiap kali halaman dibuka.
+
+## Fitur
+
+- **Daftar Harga** — semua komoditas dengan harga rata-rata kabupaten, harga per pasar,
+  status naik/turun/stabil, tampilan kartu atau tabel, serta pencarian dengan debounce.
+- **Bandingkan Pasar** — perbandingan harga tiap komoditas antar pasar, menandai pasar termurah.
+- **Hitung Belanja** — kalkulator keranjang belanja yang menghitung total di setiap pasar
+  dan menampilkan pasar paling hemat.
+- **Daftar Pasar** — informasi pasar yang tersedia beserta jumlah komoditas dan harga termurah.
+- Filter kategori, pasar, status, dan pencarian tersimpan di URL sehingga bisa dibagikan.
+
+## Sumber Data
+
+| | |
+|---|---|
+| Sumber | SISKAPERBAPO Disperindag Jawa Timur |
+| Wilayah | Kabupaten Trenggalek (`trenggalekkab`) |
+| Daftar pasar | `GET https://siskaperbapo.jatimprov.go.id/harga/pasar.json/trenggalekkab` |
+| Tabel harga | `POST https://siskaperbapo.jatimprov.go.id/harga/tabel.nodesign` |
+
+Catatan:
+
+- Situs sumber tidak mengirim header CORS, jadi permintaan **harus lewat server**
+  (lihat `src/server/harga.ts`). Browser tidak menghubungi sumber secara langsung.
+- Tanggal diambil otomatis: hari ini (zona `Asia/Jakarta`) lebih dulu; jika data hari ini
+  belum diisi (kolom *harga sekarang* masih `0`), aplikasi mundur sampai 7 hari ke belakang
+  dan menampilkan tanggal terakhir yang sudah ada datanya.
+- Komoditas tanpa harga (ditandai `-` / `0` di sumber) tidak ditampilkan.
+
+## Teknologi
+
+- [TanStack Start](https://tanstack.com/start) + [TanStack Router](https://tanstack.com/router) (file-based routing)
+- React 19, TypeScript, Vite
+- Tailwind CSS v4
+- [Siteplane UI](https://ui.siteplane.io) (komponen UI, source di `src/siteplane`)
+- Netlify (hosting + Netlify Functions untuk server function)
+
+## Menjalankan
+
+Butuh Node.js 22+ dan [pnpm](https://pnpm.io).
 
 ```bash
 pnpm install
 pnpm dev
 ```
 
-# Building For Production
+Buka http://localhost:3000.
 
-To build this application for production:
+## Build & Deploy
 
 ```bash
-pnpm build
+pnpm build      # build produksi (client -> dist/client, server function -> .netlify/v1/functions/server.mjs)
+pnpm preview    # pratinjau hasil build
 ```
 
-## Styling
+Deploy menggunakan [Netlify](https://www.netlify.com). Konfigurasi ada di `netlify.toml`:
 
-This project uses [Tailwind CSS](https://tailwindcss.com/) for styling.
-
-### Removing Tailwind CSS
-
-If you prefer not to use Tailwind CSS:
-
-1. Remove the demo pages in `src/routes/demo/`
-2. Replace the Tailwind import in `src/styles.css` with your own styles
-3. Remove `tailwindcss()` from the plugins array in `vite.config.ts`
-4. Remove `@tailwindcss/vite` and `tailwindcss` from `package.json`
-
-
-## Deploy to Netlify
-
-This project ships with `netlify.toml` configured for a Netlify site:
-
-1. Push this repo to GitHub
-2. Visit https://app.netlify.com/start and import the repo
-3. Netlify auto-detects the build (`vite build` → `dist/client`)
-4. Open **Site settings → Environment variables** and add anything from `.env.example` that needs a real value in production
-5. Trigger the first deploy
-
-Server functions and API routes run on Netlify Functions. For lower-latency request handling, see Netlify Edge Functions: https://docs.netlify.com/edge-functions/overview.
-
-
-
-## Routing
-
-This project uses [TanStack Router](https://tanstack.com/router) with file-based routing. Routes are managed as files in `src/routes`.
-
-### Adding A Route
-
-To add a new route to your application just add a new file in the `./src/routes` directory.
-
-TanStack will automatically generate the content of the route file for you.
-
-Now that you have two routes you can use a `Link` component to navigate between them.
-
-### Adding Links
-
-To use SPA (Single Page Application) navigation you will need to import the `Link` component from `@tanstack/react-router`.
-
-```tsx
-import { Link } from "@tanstack/react-router";
+```toml
+[build]
+  command = "vite build"
+  publish = "dist/client"
 ```
 
-Then anywhere in your JSX you can use it like so:
+Server function berjalan sebagai Netlify Function dan harus bisa mengakses
+`siskaperbapo.jatimprov.go.id`. Tidak ada environment variable yang dibutuhkan.
 
-```tsx
-<Link to="/about">About</Link>
+## Struktur Proyek
+
+```
+src/
+  routes/
+    __root.tsx        # shell HTML, meta, provider UI
+    index.tsx         # halaman utama (tab, filter, kalkulator)
+  server/
+    harga.ts          # scraper SISKAPERBAPO (server function)
+  data/
+    marketData.ts     # tipe data & konstanta yang dipakai bersama
+  components/
+    KulakanLogo.tsx   # logo vektor Kulakan
+  siteplane/          # source komponen Siteplane UI
+  styles.css          # entry Tailwind + style Siteplane
 ```
 
-This will create a link that will navigate to the `/about` route.
+Alur data:
 
-More information on the `Link` component can be found in the [Link documentation](https://tanstack.com/router/v1/docs/framework/react/api/router/linkComponent).
+1. Halaman dirender sebagai *loading shell* di server.
+2. Setelah hidrasi, komponen memanggil server function `getLiveMarketData()`.
+3. Server function mengambil & mem-parse data SISKAPERBAPO, lalu mengembalikan JSON.
+4. UI menampilkan data live tersebut.
 
-### Using A Layout
+## Lisensi
 
-In the File Based Routing setup the layout is located in `src/routes/__root.tsx`. Anything you add to the root route will appear in all the routes. The route content will appear in the JSX where you render `{children}` in the `shellComponent`.
-
-Here is an example layout that includes a header:
-
-```tsx
-import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
-
-export const Route = createRootRoute({
-  head: () => ({
-    meta: [
-      { charSet: 'utf-8' },
-      { name: 'viewport', content: 'width=device-width, initial-scale=1' },
-      { title: 'My App' },
-    ],
-  }),
-  shellComponent: ({ children }) => (
-    <html lang="en">
-      <head>
-        <HeadContent />
-      </head>
-      <body>
-        <header>
-          <nav>
-            <Link to="/">Home</Link>
-            <Link to="/about">About</Link>
-          </nav>
-        </header>
-        {children}
-        <Scripts />
-      </body>
-    </html>
-  ),
-})
-```
-
-More information on layouts can be found in the [Layouts documentation](https://tanstack.com/router/latest/docs/framework/react/guide/routing-concepts#layouts).
-
-## Server Functions
-
-TanStack Start provides server functions that allow you to write server-side code that seamlessly integrates with your client components.
-
-```tsx
-import { createServerFn } from '@tanstack/react-start'
-
-const getServerTime = createServerFn({
-  method: 'GET',
-}).handler(async () => {
-  return new Date().toISOString()
-})
-
-// Use in a component
-function MyComponent() {
-  const [time, setTime] = useState('')
-  
-  useEffect(() => {
-    getServerTime().then(setTime)
-  }, [])
-  
-  return <div>Server time: {time}</div>
-}
-```
-
-## API Routes
-
-You can create API routes by using the `server` property in your route definitions:
-
-```tsx
-import { createFileRoute } from '@tanstack/react-router'
-import { json } from '@tanstack/react-start'
-
-export const Route = createFileRoute('/api/hello')({
-  server: {
-    handlers: {
-      GET: () => json({ message: 'Hello, World!' }),
-    },
-  },
-})
-```
-
-## Data Fetching
-
-There are multiple ways to fetch data in your application. You can use TanStack Query to fetch data from a server. But you can also use the `loader` functionality built into TanStack Router to load the data for a route before it's rendered.
-
-For example:
-
-```tsx
-import { createFileRoute } from '@tanstack/react-router'
-
-export const Route = createFileRoute('/people')({
-  loader: async () => {
-    const response = await fetch('https://swapi.dev/api/people')
-    return response.json()
-  },
-  component: PeopleComponent,
-})
-
-function PeopleComponent() {
-  const data = Route.useLoaderData()
-  return (
-    <ul>
-      {data.results.map((person) => (
-        <li key={person.name}>{person.name}</li>
-      ))}
-    </ul>
-  )
-}
-```
-
-Loaders simplify your data fetching logic dramatically. Check out more information in the [Loader documentation](https://tanstack.com/router/latest/docs/framework/react/guide/data-loading#loader-parameters).
-
-
-
-# Learn More
-
-You can learn more about all of the offerings from TanStack in the [TanStack documentation](https://tanstack.com).
-
-For TanStack Start specific documentation, visit [TanStack Start](https://tanstack.com/start).
+Komponen UI dari Siteplane UI diatur oleh `LICENSE.siteplane-ui` dan
+`TRADEMARKS.siteplane-ui.md`. Sisa kode proyek ini milik nggalek.co.

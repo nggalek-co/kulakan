@@ -1,58 +1,60 @@
-import { createFileRoute, useNavigate, Link } from '@tanstack/react-router'
 import { KulakanLogo, KulakanMark } from '@/components/KulakanLogo'
-import { useState, useMemo, useEffect } from 'react'
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import {
-  TrendingDownIcon,
-  TrendingUpIcon,
-  MinusIcon,
-  RefreshCwIcon,
-  MapPinIcon,
   ClockIcon,
-  CalculatorIcon,
-  PlusIcon,
-  Trash2Icon,
-  SearchIcon,
   LayoutGridIcon,
   ListIcon,
+  MapPinIcon,
+  MinusIcon,
+  PlusIcon,
+  RefreshCwIcon,
+  Trash2Icon,
+  TrendingDownIcon,
+  TrendingUpIcon
 } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import { Button } from '@/siteplane/components/button'
 import { Badge } from '@/siteplane/components/badge'
+import { Button } from '@/siteplane/components/button'
 import {
   Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardPanel,
-  CardFooter,
   CardAction,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardPanel,
+  CardTitle,
 } from '@/siteplane/components/card'
-import {
-  Table,
-  TableHeader,
-  TableHead,
-  TableBody,
-  TableRow,
-  TableCell,
-  type SortDescriptor,
-} from '@/siteplane/components/table'
+import { Input } from '@/siteplane/components/input'
 import {
   Select,
+  SelectItem,
+  SelectPopup,
   SelectTrigger,
   SelectValue,
-  SelectPopup,
-  SelectItem,
 } from '@/siteplane/components/select'
-import { Input } from '@/siteplane/components/input'
-import { Tabs, TabsList, TabsTab, TabsPanel } from '@/siteplane/components/tabs'
-import { Spinner } from '@/siteplane/components/spinner'
 import { Separator } from '@/siteplane/components/separator'
+import { Spinner } from '@/siteplane/components/spinner'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  type SortDescriptor,
+} from '@/siteplane/components/table'
+import { Tabs, TabsList, TabsPanel, TabsTab } from '@/siteplane/components/tabs'
 
 import {
-  TRENGGALEK_MARKETS,
-  COMMODITIES_DATA,
+  SISKAPERBAPO_BASE,
+  formatTanggalPanjang,
   type CommodityItem,
+  type LiveCategory,
+  type LiveMarket,
+  type LivePriceData,
 } from '@/data/marketData'
+import { getLiveMarketData } from '@/server/harga'
 
 export interface KulakanSearchParams {
   tab?: 'daftar-harga' | 'pasar-termurah' | 'kalkulator' | 'info-pasar'
@@ -81,7 +83,7 @@ export const Route = createFileRoute('/')({
     return {
       tab:
         typeof search.tab === 'string' &&
-        validTabs.includes(search.tab as KulakanSearchParams['tab'])
+          validTabs.includes(search.tab as KulakanSearchParams['tab'])
           ? (search.tab as KulakanSearchParams['tab'])
           : undefined,
       market:
@@ -94,8 +96,8 @@ export const Route = createFileRoute('/')({
           : undefined,
       status:
         typeof search.status === 'string' &&
-        validStatuses.includes(search.status as KulakanSearchParams['status']) &&
-        search.status !== 'all'
+          validStatuses.includes(search.status as KulakanSearchParams['status']) &&
+          search.status !== 'all'
           ? (search.status as KulakanSearchParams['status'])
           : undefined,
       q:
@@ -116,13 +118,219 @@ function formatRupiah(num: number): string {
   }).format(num)
 }
 
+/** Rentang harga antar pasar; jatuh ke harga rata-rata bila pasar kosong. */
+function priceRange(
+  marketPrices: Record<string, number>,
+  fallback: number,
+): [number, number] {
+  const values = Object.values(marketPrices).filter((value) => value > 0)
+  if (values.length === 0) return [fallback, fallback]
+  return [Math.min(...values), Math.max(...values)]
+}
+
+function KulakanShell({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-white px-4 text-foreground dark:bg-slate-950">
+      <div className="w-full max-w-md rounded-2xl border border-slate-200/90 bg-white p-8 text-center shadow-xs dark:bg-slate-900/40 dark:border-slate-800">
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function KulakanPendingState() {
+  return (
+    <KulakanShell>
+      <Spinner className="mx-auto size-8 animate-spin text-emerald-700" />
+      <h1 className="mt-4 text-lg font-bold">Memuat harga pasar...</h1>
+      <p className="mt-1.5 text-sm text-muted-foreground">
+        Mengambil data terbaru dari SISKAPERBAPO Disperindag Jawa Timur.
+      </p>
+    </KulakanShell>
+  )
+}
+
+function KulakanErrorState({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+  const message = error instanceof Error ? error.message : String(error ?? '')
+  return (
+    <KulakanShell>
+      <h1 className="text-lg font-bold">Gagal memuat data harga</h1>
+      <p className="mt-1.5 text-sm text-muted-foreground">
+        Data live dari SISKAPERBAPO sedang tidak bisa diambil. Coba muat ulang
+        beberapa saat lagi.
+      </p>
+      <p className="mt-3 text-xs font-mono text-destructive break-words">{message}</p>
+      <Button variant="default" size="md" className="mt-5" onClick={onRetry}>
+        <RefreshCwIcon className="size-4" />
+        <span>Coba Lagi</span>
+      </Button>
+    </KulakanShell>
+  )
+}
+
+function CategoryFilterButtons({
+  categories,
+  selectedCategory,
+  onChange,
+}: {
+  categories: LiveCategory[]
+  selectedCategory: string
+  onChange: (id: string) => void
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="text-sm font-bold text-foreground mr-1">Kategori:</span>
+      <Button
+        variant={selectedCategory === 'all' ? 'default' : 'outline'}
+        size="md"
+        onClick={() => onChange('all')}
+      >
+        Semua
+      </Button>
+      {categories.map((category) => (
+        <Button
+          key={category.id}
+          variant={selectedCategory === category.id ? 'default' : 'outline'}
+          size="md"
+          onClick={() => onChange(category.id)}
+        >
+          {category.label}
+        </Button>
+      ))}
+    </div>
+  )
+}
+
+function MarketInfoCard({
+  market,
+  commodities,
+  dateLabel,
+  onSelect,
+}: {
+  market: LiveMarket
+  commodities: CommodityItem[]
+  dateLabel: string
+  onSelect: () => void
+}) {
+  const available = commodities.filter((c) => (c.marketPrices[market.id] ?? 0) > 0)
+  const cheapest = available.reduce<CommodityItem | null>((lowest, item) => {
+    if (!lowest) return item
+    return item.marketPrices[market.id] < lowest.marketPrices[market.id] ? item : lowest
+  }, null)
+
+  return (
+    <Card
+      variant="raised"
+      className="flex flex-col justify-between bg-white border border-slate-200/90 shadow-xs hover:border-slate-300 hover:shadow-md transition-all dark:bg-slate-900/30 dark:border-slate-800/50"
+    >
+      <div>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <Badge variant="secondary" size="sm">
+              {available.length} komoditas
+            </Badge>
+            <span className="text-xs text-muted-foreground font-mono">ID #{market.id}</span>
+          </div>
+          <CardTitle className="mt-2 text-lg font-bold">{market.name}</CardTitle>
+          <CardDescription className="text-xs sm:text-sm font-medium">
+            Harga konsumen tingkat pasar
+          </CardDescription>
+        </CardHeader>
+
+        <CardPanel className="space-y-3 text-xs sm:text-sm text-muted-foreground">
+          <p className="text-foreground leading-relaxed">
+            Data harga {market.name} bersumber langsung dari SISKAPERBAPO Disperindag
+            Jawa Timur.
+          </p>
+          <Separator />
+          <div className="flex items-center gap-2">
+            <ClockIcon className="size-4 shrink-0 text-foreground" />
+            <span>Data per {dateLabel}</span>
+          </div>
+          {cheapest && (
+            <div className="flex items-center gap-2">
+              <MapPinIcon className="size-4 shrink-0 text-foreground" />
+              <span>
+                Termurah: {cheapest.name} ({formatRupiah(cheapest.marketPrices[market.id])}/
+                {cheapest.unit})
+              </span>
+            </div>
+          )}
+        </CardPanel>
+      </div>
+
+      <CardFooter className="mt-4 border-t border-(length:--sp-rw-border-default) border-(--sp-rw-border-translucent) pt-3">
+        <Button variant="outline" size="sm" width="full" onClick={onSelect}>
+          Lihat Harga di {market.name}
+        </Button>
+      </CardFooter>
+    </Card>
+  )
+}
+
 function KulakanHomePage() {
+  const [liveData, setLiveData] = useState<LivePriceData | null>(null)
+  const [loadError, setLoadError] = useState<unknown>(null)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+
+  const loadLiveData = useCallback(async () => {
+    setIsRefreshing(true)
+    setLoadError(null)
+    try {
+      const data = await getLiveMarketData()
+      setLiveData(data)
+    } catch (error) {
+      setLoadError(error)
+    } finally {
+      setIsRefreshing(false)
+    }
+  }, [])
+
+  // Data diambil di sisi klien setelah halaman dirender.
+  useEffect(() => {
+    void loadLiveData()
+  }, [loadLiveData])
+
+  if (!liveData && loadError) {
+    return <KulakanErrorState error={loadError} onRetry={() => void loadLiveData()} />
+  }
+
+  if (!liveData) {
+    return <KulakanPendingState />
+  }
+
+  return (
+    <KulakanContent
+      liveData={liveData}
+      isRefreshing={isRefreshing}
+      onRefresh={() => void loadLiveData()}
+    />
+  )
+}
+
+function KulakanContent({
+  liveData,
+  isRefreshing,
+  onRefresh,
+}: {
+  liveData: LivePriceData
+  isRefreshing: boolean
+  onRefresh: () => void
+}) {
   const searchParams = Route.useSearch()
   const navigate = useNavigate({ from: Route.fullPath })
 
+  const markets = liveData.markets
+  const commodities = liveData.commodities
+  const categories = liveData.categories
+
   // Derived filter state from URL search params
-  const selectedMarket = searchParams.market ?? 'all'
-  const selectedCategory = searchParams.category ?? 'all'
+  const selectedMarket = markets.some((m) => m.id === searchParams.market)
+    ? (searchParams.market as string)
+    : 'all'
+  const selectedCategory = categories.some((c) => c.id === searchParams.category)
+    ? (searchParams.category as string)
+    : 'all'
   const statusFilter = searchParams.status ?? 'all'
   const activeTab = searchParams.tab ?? 'daftar-harga'
   const viewMode: 'card' | 'table' = searchParams.view ?? 'card'
@@ -132,7 +340,6 @@ function KulakanHomePage() {
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState<string>(searchParams.q ?? '')
   const [isDebouncing, setIsDebouncing] = useState<boolean>(false)
 
-  const [isRefreshing, setIsRefreshing] = useState(false)
   const [sortDescriptor, setSortDescriptor] = useState<SortDescriptor>({
     column: 'name',
     direction: 'ascending',
@@ -247,27 +454,31 @@ function KulakanHomePage() {
     })
   }
 
-  // Shopping cart calculator
-  const [cart, setCart] = useState<Array<{ commodityId: string; qty: number }>>([
-    { commodityId: 'beras-medium', qty: 5 },
-    { commodityId: 'minyakita', qty: 2 },
-    { commodityId: 'telur-ayam-ras', qty: 1 },
-    { commodityId: 'cabe-rawit', qty: 0.5 },
-  ])
-  const [selectedCommodityToAdd, setSelectedCommodityToAdd] = useState<string>('gula-pasir')
+  // Shopping cart calculator — default diambil dari komoditas live yang tersedia.
+  const [cart, setCart] = useState<Array<{ commodityId: string; qty: number }>>(() => {
+    const preferred: Array<{ match: string; qty: number }> = [
+      { match: 'beras medium', qty: 5 },
+      { match: 'minyakita', qty: 2 },
+      { match: 'telur ayam ras', qty: 1 },
+      { match: 'cabe rawit merah', qty: 0.5 },
+    ]
+    const picked: Array<{ commodityId: string; qty: number }> = []
+    for (const item of preferred) {
+      const found = commodities.find((c) => c.name.toLowerCase().includes(item.match))
+      if (found && !picked.some((p) => p.commodityId === found.id)) {
+        picked.push({ commodityId: found.id, qty: item.qty })
+      }
+    }
+    return picked
+  })
+  const [selectedCommodityToAdd, setSelectedCommodityToAdd] = useState<string>(
+    () => commodities[0]?.id ?? '',
+  )
   const [addQty, setAddQty] = useState<number>(1)
-
-  // Refresh handler
-  const handleRefresh = () => {
-    setIsRefreshing(true)
-    setTimeout(() => {
-      setIsRefreshing(false)
-    }, 500)
-  }
 
   // Filtered & sorted commodities using debounced search query
   const filteredCommodities = useMemo(() => {
-    let result = [...COMMODITIES_DATA]
+    let result = [...commodities]
 
     if (selectedCategory !== 'all') {
       result = result.filter((item) => item.category === selectedCategory)
@@ -316,38 +527,58 @@ function KulakanHomePage() {
     })
 
     return result
-  }, [selectedCategory, statusFilter, debouncedSearchQuery, selectedMarket, sortDescriptor])
+  }, [commodities, selectedCategory, statusFilter, debouncedSearchQuery, selectedMarket, sortDescriptor])
 
   // Key stats
-  const totalItems = COMMODITIES_DATA.length
-  const risingItems = COMMODITIES_DATA.filter((c) => c.status === 'naik')
-  const fallingItems = COMMODITIES_DATA.filter((c) => c.status === 'turun')
-  const stableItems = COMMODITIES_DATA.filter((c) => c.status === 'stabil')
+  const totalItems = commodities.length
+  const risingItems = commodities.filter((c) => c.status === 'naik')
+  const fallingItems = commodities.filter((c) => c.status === 'turun')
+  const stableItems = commodities.filter((c) => c.status === 'stabil')
 
   // Top highlight items
   const topRising = risingItems.slice(0, 2)
   const topFalling = fallingItems.slice(0, 2)
 
+  // Saran pencarian cepat, diambil dari komoditas yang benar-benar ada.
+  const quickSearchTerms = useMemo(() => {
+    const curated = [
+      'Beras Medium',
+      'Cabe Rawit Merah',
+      'Telur Ayam Ras',
+      'Minyak Goreng MINYAKITA',
+      'Bawang Merah',
+      'Daging Ayam Ras',
+    ]
+    const found = curated.filter((term) =>
+      commodities.some((c) => c.name.toLowerCase().includes(term.toLowerCase())),
+    )
+    if (found.length >= 6) return found
+    const fallback = commodities
+      .map((c) => c.name)
+      .filter((name) => !found.includes(name))
+    return [...found, ...fallback].slice(0, 6)
+  }, [commodities])
+
   // Shopping calculation across markets
   const cartSummary = useMemo(() => {
-    return TRENGGALEK_MARKETS.map((market) => {
-      let total = 0
-      cart.forEach((item) => {
-        const commodity = COMMODITIES_DATA.find((c) => c.id === item.commodityId)
-        if (commodity) {
-          const price = commodity.marketPrices[market.id] ?? commodity.currentPrice
-          total += price * item.qty
+    return markets
+      .map((market) => {
+        let total = 0
+        cart.forEach((item) => {
+          const commodity = commodities.find((c) => c.id === item.commodityId)
+          if (commodity) {
+            const price = commodity.marketPrices[market.id] ?? commodity.currentPrice
+            total += price * item.qty
+          }
+        })
+        return {
+          marketId: market.id,
+          marketName: market.name,
+          total,
         }
       })
-      return {
-        marketId: market.id,
-        marketName: market.name,
-        location: market.location,
-        specialty: market.specialty,
-        total,
-      }
-    }).sort((a, b) => a.total - b.total)
-  }, [cart])
+      .sort((a, b) => a.total - b.total)
+  }, [cart, markets, commodities])
 
   const cheapestMarket = cartSummary[0]
   const mostExpensiveMarket = cartSummary[cartSummary.length - 1]
@@ -386,7 +617,7 @@ function KulakanHomePage() {
               variant="outline"
               size="md"
               loading={isRefreshing}
-              onClick={handleRefresh}
+              onClick={onRefresh}
               aria-label="Perbarui data harga"
             >
               <RefreshCwIcon className="size-4" />
@@ -410,7 +641,7 @@ function KulakanHomePage() {
             </div>
             <div className="inline-flex items-center gap-2 self-start sm:self-center rounded-full bg-emerald-50 border border-emerald-200/80 px-3.5 py-1.5 text-xs sm:text-sm font-semibold text-emerald-900 shadow-2xs dark:bg-emerald-950/40 dark:border-emerald-800/60 dark:text-emerald-300">
               <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Pembaruan: 17 Oktober 2026</span>
+              <span>Data live: {formatTanggalPanjang(liveData.tanggal)}</span>
             </div>
           </div>
 
@@ -444,16 +675,16 @@ function KulakanHomePage() {
                   <SelectValue placeholder="Pilih Pasar...">
                     {(val: string | null) => {
                       if (!val || val === 'all') return 'Semua Pasar (Rata-rata)'
-                      const m = TRENGGALEK_MARKETS.find((item) => item.id === val)
-                      return m ? `${m.name} (${m.location})` : val
+                      const m = markets.find((item) => item.id === val)
+                      return m ? m.name : val
                     }}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectPopup>
                   <SelectItem value="all">Semua Pasar (Rata-rata)</SelectItem>
-                  {TRENGGALEK_MARKETS.map((m) => (
+                  {markets.map((m) => (
                     <SelectItem key={m.id} value={m.id}>
-                      {m.name} ({m.location})
+                      {m.name}
                     </SelectItem>
                   ))}
                 </SelectPopup>
@@ -464,7 +695,7 @@ function KulakanHomePage() {
           {/* Quick Filter Chips */}
           <div className="mt-3.5 flex flex-wrap items-center gap-2 text-xs sm:text-sm">
             <span className="text-muted-foreground font-medium">Populer:</span>
-            {['Cabai Rawit Merah', 'Beras Medium', 'Telur Ayam Ras', 'Minyakita', 'Bawang Merah', 'Daging Ayam Broiler'].map((term) => (
+            {quickSearchTerms.map((term) => (
               <button
                 key={term}
                 type="button"
@@ -529,6 +760,11 @@ function KulakanHomePage() {
                   </div>
                 </CardHeader>
                 <CardPanel className="space-y-3">
+                  {topFalling.length === 0 && (
+                    <p className="py-2 text-xs sm:text-sm text-muted-foreground">
+                      Tidak ada komoditas yang turun harga hari ini.
+                    </p>
+                  )}
                   <div className="divide-y divide-emerald-200/60 dark:divide-emerald-900/40">
                     {topFalling.map((item) => (
                       <div key={item.id} className="flex items-center justify-between py-2.5">
@@ -572,6 +808,11 @@ function KulakanHomePage() {
                   </div>
                 </CardHeader>
                 <CardPanel className="space-y-3">
+                  {topRising.length === 0 && (
+                    <p className="py-2 text-xs sm:text-sm text-muted-foreground">
+                      Tidak ada komoditas yang naik harga hari ini.
+                    </p>
+                  )}
                   <div className="divide-y divide-rose-200/60 dark:divide-rose-900/40">
                     {topRising.map((item) => (
                       <div key={item.id} className="flex items-center justify-between py-2.5">
@@ -598,44 +839,11 @@ function KulakanHomePage() {
             {/* Filter Bar */}
             <div className="flex flex-col gap-3 rounded-xl border border-slate-200/80 bg-slate-50/70 p-3.5 sm:flex-row sm:items-center sm:justify-between dark:bg-slate-900/40 dark:border-slate-800">
               {/* Category selector */}
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm font-bold text-foreground mr-1">Kategori:</span>
-                <Button
-                  variant={selectedCategory === 'all' ? 'default' : 'outline'}
-                  size="md"
-                  onClick={() => handleCategoryChange('all')}
-                >
-                  Semua
-                </Button>
-                <Button
-                  variant={selectedCategory === 'beras' ? 'default' : 'outline'}
-                  size="md"
-                  onClick={() => handleCategoryChange('beras')}
-                >
-                  Beras
-                </Button>
-                <Button
-                  variant={selectedCategory === 'bumbu' ? 'default' : 'outline'}
-                  size="md"
-                  onClick={() => handleCategoryChange('bumbu')}
-                >
-                  Bumbu &amp; Sayur
-                </Button>
-                <Button
-                  variant={selectedCategory === 'minyak-gula' ? 'default' : 'outline'}
-                  size="md"
-                  onClick={() => handleCategoryChange('minyak-gula')}
-                >
-                  Minyak &amp; Gula
-                </Button>
-                <Button
-                  variant={selectedCategory === 'protein' ? 'default' : 'outline'}
-                  size="md"
-                  onClick={() => handleCategoryChange('protein')}
-                >
-                  Lauk &amp; Daging
-                </Button>
-              </div>
+              <CategoryFilterButtons
+                categories={categories}
+                selectedCategory={selectedCategory}
+                onChange={handleCategoryChange}
+              />
 
               {/* Status filter & View Switcher */}
               <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2">
@@ -693,11 +901,10 @@ function KulakanHomePage() {
                   <button
                     type="button"
                     onClick={() => handleViewChange('card')}
-                    className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-bold cursor-pointer transition-colors ${
-                      viewMode === 'card'
-                        ? 'bg-foreground text-background shadow-2xs'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
+                    className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-bold cursor-pointer transition-colors ${viewMode === 'card'
+                      ? 'bg-foreground text-background shadow-2xs'
+                      : 'text-muted-foreground hover:text-foreground'
+                      }`}
                     aria-label="Tampilan Kartu"
                   >
                     <LayoutGridIcon className="size-3.5" />
@@ -706,11 +913,10 @@ function KulakanHomePage() {
                   <button
                     type="button"
                     onClick={() => handleViewChange('table')}
-                    className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-bold cursor-pointer transition-colors ${
-                      viewMode === 'table'
-                        ? 'bg-foreground text-background shadow-2xs'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
+                    className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-bold cursor-pointer transition-colors ${viewMode === 'table'
+                      ? 'bg-foreground text-background shadow-2xs'
+                      : 'text-muted-foreground hover:text-foreground'
+                      }`}
                     aria-label="Tampilan Tabel"
                   >
                     <ListIcon className="size-3.5" />
@@ -729,9 +935,7 @@ function KulakanHomePage() {
                       ? item.currentPrice
                       : (item.marketPrices[selectedMarket] ?? item.currentPrice)
 
-                  const prices = Object.entries(item.marketPrices)
-                  const minPrice = Math.min(...prices.map(([, p]) => p))
-                  const maxPrice = Math.max(...prices.map(([, p]) => p))
+                  const [minPrice, maxPrice] = priceRange(item.marketPrices, displayPrice)
 
                   return (
                     <Card
@@ -808,7 +1012,7 @@ function KulakanHomePage() {
                         </span>
                         {selectedMarket !== 'all' && (
                           <span className="font-medium text-foreground">
-                            {TRENGGALEK_MARKETS.find((m) => m.id === selectedMarket)?.name}
+                            {markets.find((m) => m.id === selectedMarket)?.name}
                           </span>
                         )}
                       </div>
@@ -839,7 +1043,7 @@ function KulakanHomePage() {
                     <TableHead id="price" align="end" allowsSorting>
                       {selectedMarket === 'all'
                         ? 'Harga Rata-rata'
-                        : `Harga di ${TRENGGALEK_MARKETS.find((m) => m.id === selectedMarket)?.name}`}
+                        : `Harga di ${markets.find((m) => m.id === selectedMarket)?.name}`}
                     </TableHead>
                     <TableHead id="change" align="end" allowsSorting>
                       Perubahan
@@ -856,9 +1060,7 @@ function KulakanHomePage() {
                           ? item.currentPrice
                           : (item.marketPrices[selectedMarket] ?? item.currentPrice)
 
-                      const prices = Object.entries(item.marketPrices)
-                      const minPrice = Math.min(...prices.map(([, p]) => p))
-                      const maxPrice = Math.max(...prices.map(([, p]) => p))
+                      const [minPrice, maxPrice] = priceRange(item.marketPrices, displayPrice)
 
                       return (
                         <TableRow
@@ -891,13 +1093,12 @@ function KulakanHomePage() {
                           </TableCell>
                           <TableCell align="end">
                             <div
-                              className={`font-mono text-sm sm:text-base font-bold flex items-center justify-end gap-1.5 ${
-                                item.status === 'naik'
-                                  ? 'text-[#741221] dark:text-rose-400'
-                                  : item.status === 'turun'
-                                    ? 'text-emerald-700 dark:text-emerald-400'
-                                    : 'text-muted-foreground'
-                              }`}
+                              className={`font-mono text-sm sm:text-base font-bold flex items-center justify-end gap-1.5 ${item.status === 'naik'
+                                ? 'text-[#741221] dark:text-rose-400'
+                                : item.status === 'turun'
+                                  ? 'text-emerald-700 dark:text-emerald-400'
+                                  : 'text-muted-foreground'
+                                }`}
                             >
                               {item.status === 'turun' && (
                                 <TrendingDownIcon className="size-4 shrink-0 text-emerald-700 dark:text-emerald-400" />
@@ -947,436 +1148,363 @@ function KulakanHomePage() {
                 Tidak ditemukan data komoditas yang sesuai dengan kata kunci &quot;{debouncedSearchQuery}&quot;.
               </div>
             )}
-      </TabsPanel>
+          </TabsPanel>
 
-      {/* TAB 2: Bandingkan Pasar */}
-      <TabsPanel value="pasar-termurah" className="mt-4 space-y-4">
-        {/* Filter Bar for Tab 2 */}
-        <div className="flex flex-col gap-3 rounded-xl border border-slate-200/80 bg-slate-50/70 p-3.5 sm:flex-row sm:items-center sm:justify-between dark:bg-slate-900/40 dark:border-slate-800">
-          {/* Category selector */}
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-bold text-foreground mr-1">Kategori:</span>
-            <Button
-              variant={selectedCategory === 'all' ? 'default' : 'outline'}
-              size="md"
-              onClick={() => handleCategoryChange('all')}
-            >
-              Semua
-            </Button>
-            <Button
-              variant={selectedCategory === 'beras' ? 'default' : 'outline'}
-              size="md"
-              onClick={() => handleCategoryChange('beras')}
-            >
-              Beras
-            </Button>
-            <Button
-              variant={selectedCategory === 'bumbu' ? 'default' : 'outline'}
-              size="md"
-              onClick={() => handleCategoryChange('bumbu')}
-            >
-              Bumbu &amp; Sayur
-            </Button>
-            <Button
-              variant={selectedCategory === 'minyak-gula' ? 'default' : 'outline'}
-              size="md"
-              onClick={() => handleCategoryChange('minyak-gula')}
-            >
-              Minyak &amp; Gula
-            </Button>
-            <Button
-              variant={selectedCategory === 'protein' ? 'default' : 'outline'}
-              size="md"
-              onClick={() => handleCategoryChange('protein')}
-            >
-              Lauk &amp; Daging
-            </Button>
-          </div>
+          {/* TAB 2: Bandingkan Pasar */}
+          <TabsPanel value="pasar-termurah" className="mt-4 space-y-4">
+            {/* Filter Bar for Tab 2 */}
+            <div className="flex flex-col gap-3 rounded-xl border border-slate-200/80 bg-slate-50/70 p-3.5 sm:flex-row sm:items-center sm:justify-between dark:bg-slate-900/40 dark:border-slate-800">
+              {/* Category selector */}
+              <CategoryFilterButtons
+                categories={categories}
+                selectedCategory={selectedCategory}
+                onChange={handleCategoryChange}
+              />
 
-          {/* Status filter */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            <Button
-              variant={statusFilter === 'all' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => handleStatusFilterChange('all')}
-            >
-              Semua ({totalItems})
-            </Button>
-            <Button
-              variant={statusFilter === 'turun' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => handleStatusFilterChange('turun')}
-              className={
-                statusFilter === 'turun'
-                  ? 'bg-emerald-700 text-white hover:bg-emerald-800'
-                  : 'text-emerald-800 border-emerald-300/80 hover:bg-emerald-50 dark:text-emerald-300 dark:border-emerald-800'
-              }
-            >
-              <TrendingDownIcon className="size-4" />
-              <span>Turun ({fallingItems.length})</span>
-            </Button>
-            <Button
-              variant={statusFilter === 'naik' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => handleStatusFilterChange('naik')}
-              className={
-                statusFilter === 'naik'
-                  ? 'bg-[#741221] text-white hover:bg-[#600f1c] dark:bg-[#881a2c]'
-                  : 'text-[#741221] border-[#741221]/40 hover:bg-rose-50 dark:text-rose-300 dark:border-rose-900'
-              }
-            >
-              <TrendingUpIcon className="size-4" />
-              <span>Naik ({risingItems.length})</span>
-            </Button>
-            <Button
-              variant={statusFilter === 'stabil' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => handleStatusFilterChange('stabil')}
-              className={
-                statusFilter === 'stabil'
-                  ? 'bg-slate-700 text-white hover:bg-slate-800'
-                  : 'text-slate-700 border-slate-300/80 hover:bg-slate-50 dark:text-slate-300 dark:border-slate-800'
-              }
-            >
-              <MinusIcon className="size-4" />
-              <span>Stabil ({stableItems.length})</span>
-            </Button>
-          </div>
-        </div>
+              {/* Status filter */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Button
+                  variant={statusFilter === 'all' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => handleStatusFilterChange('all')}
+                >
+                  Semua ({totalItems})
+                </Button>
+                <Button
+                  variant={statusFilter === 'turun' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => handleStatusFilterChange('turun')}
+                  className={
+                    statusFilter === 'turun'
+                      ? 'bg-emerald-700 text-white hover:bg-emerald-800'
+                      : 'text-emerald-800 border-emerald-300/80 hover:bg-emerald-50 dark:text-emerald-300 dark:border-emerald-800'
+                  }
+                >
+                  <TrendingDownIcon className="size-4" />
+                  <span>Turun ({fallingItems.length})</span>
+                </Button>
+                <Button
+                  variant={statusFilter === 'naik' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => handleStatusFilterChange('naik')}
+                  className={
+                    statusFilter === 'naik'
+                      ? 'bg-[#741221] text-white hover:bg-[#600f1c] dark:bg-[#881a2c]'
+                      : 'text-[#741221] border-[#741221]/40 hover:bg-rose-50 dark:text-rose-300 dark:border-rose-900'
+                  }
+                >
+                  <TrendingUpIcon className="size-4" />
+                  <span>Naik ({risingItems.length})</span>
+                </Button>
+                <Button
+                  variant={statusFilter === 'stabil' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => handleStatusFilterChange('stabil')}
+                  className={
+                    statusFilter === 'stabil'
+                      ? 'bg-slate-700 text-white hover:bg-slate-800'
+                      : 'text-slate-700 border-slate-300/80 hover:bg-slate-50 dark:text-slate-300 dark:border-slate-800'
+                  }
+                >
+                  <MinusIcon className="size-4" />
+                  <span>Stabil ({stableItems.length})</span>
+                </Button>
+              </div>
+            </div>
 
-        {/* Comparison Cards Grid */}
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          {filteredCommodities.map((item) => {
-            const prices = Object.entries(item.marketPrices)
-            const minPrice = Math.min(...prices.map(([, p]) => p))
-            const maxPrice = Math.max(...prices.map(([, p]) => p))
+            {/* Comparison Cards Grid */}
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              {filteredCommodities.map((item) => {
+                const [minPrice, maxPrice] = priceRange(item.marketPrices, item.currentPrice)
 
-            return (
-              <Card
-                key={item.id}
-                variant="raised"
-                className="bg-white border border-slate-200/90 shadow-xs hover:border-slate-300 hover:shadow-md transition-all dark:bg-slate-900/30 dark:border-slate-800/50"
-              >
-                <CardHeader>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <CardTitle className="text-base font-bold text-foreground">
-                        {item.name}
-                      </CardTitle>
-                      <span className="inline-flex items-center rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-xs font-semibold text-foreground border border-slate-200/60 dark:border-slate-700/60">
-                        {item.categoryLabel}
-                      </span>
-                    </div>
-                    <CardDescription className="text-xs sm:text-sm mt-0.5">
-                      Rata-rata: {formatRupiah(item.currentPrice)} / {item.unit}
-                    </CardDescription>
-                  </div>
-                  <CardAction>
-                    {item.status === 'naik' && (
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-[#741221] dark:bg-[#881a2c] px-2.5 py-1 text-xs font-bold text-white shadow-2xs">
-                        <TrendingUpIcon className="size-3.5 shrink-0 text-white" />
-                        <span>Naik</span>
-                      </span>
-                    )}
-                    {item.status === 'turun' && (
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-700 dark:bg-emerald-600 px-2.5 py-1 text-xs font-bold text-white shadow-2xs">
-                        <TrendingDownIcon className="size-3.5 shrink-0 text-white" />
-                        <span>Turun</span>
-                      </span>
-                    )}
-                    {item.status === 'stabil' && (
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-600 dark:bg-slate-700 px-2.5 py-1 text-xs font-bold text-white shadow-2xs">
-                        <MinusIcon className="size-3.5 shrink-0 text-white" />
-                        <span>Stabil</span>
-                      </span>
-                    )}
-                  </CardAction>
-                </CardHeader>
-
-                <CardPanel>
-                  <div className="divide-y divide-(length:--sp-rw-border-default) divide-(--sp-rw-border-translucent)">
-                    {TRENGGALEK_MARKETS.map((market) => {
-                      const price = item.marketPrices[market.id] ?? item.currentPrice
-                      const isLowest = price === minPrice
-                      const isHighest = price === maxPrice && minPrice !== maxPrice
-
-                      return (
-                        <div
-                          key={market.id}
-                          className={`flex items-center justify-between py-2 text-sm ${
-                            isLowest
-                              ? 'bg-emerald-100/60 dark:bg-emerald-950/40 font-semibold text-emerald-950 dark:text-emerald-100 px-2.5 rounded-md border border-emerald-200/70'
-                              : 'px-2'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2">
-                            <span>{market.name}</span>
-                            {isLowest && (
-                              <Badge variant="success" size="xs">
-                                Termurah
-                              </Badge>
-                            )}
-                            {isHighest && (
-                              <span className="text-xs text-muted-foreground">
-                                Tertinggi
-                              </span>
-                            )}
-                          </div>
-                          <span className="font-mono font-bold">{formatRupiah(price)}</span>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </CardPanel>
-              </Card>
-            )
-          })}
-        </div>
-
-        {filteredCommodities.length === 0 && (
-          <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 dark:bg-slate-900/30 p-10 text-center text-sm text-muted-foreground">
-            Tidak ditemukan data komoditas yang sesuai dengan kriteria pencarian atau filter.
-          </div>
-        )}
-      </TabsPanel>
-
-      {/* TAB 3: Hitung Belanja */}
-      <TabsPanel value="kalkulator" className="mt-4 space-y-6">
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-          {/* Left Column: Basket */}
-          <div className="space-y-4 lg:col-span-7">
-            <Card
-              variant="raised"
-              className="bg-white border border-slate-200/90 shadow-xs dark:bg-slate-900/30 dark:border-slate-800/50"
-            >
-              <CardHeader>
-                <CardTitle className="text-base font-semibold">
-                  Daftar Belanja
-                </CardTitle>
-                <CardDescription className="text-xs sm:text-sm">
-                  Pilih komoditas dan jumlah untuk menghitung perkiraan belanja.
-                </CardDescription>
-              </CardHeader>
-
-              <CardPanel className="space-y-4">
-                {/* Add Item Row */}
-                <div className="flex flex-col gap-2 rounded-xl border border-slate-200/80 bg-slate-50/80 dark:bg-slate-900/40 p-3 sm:flex-row sm:items-center">
-                  <div className="flex-1">
-                    <Select
-                      value={selectedCommodityToAdd}
-                      onValueChange={(val) => setSelectedCommodityToAdd((val as string) ?? '')}
-                    >
-                      <SelectTrigger size="md" className="w-full">
-                        <SelectValue placeholder="Pilih komoditas...">
-                          {(val: string | null) => {
-                            if (!val) return null
-                            const c = COMMODITIES_DATA.find((item) => item.id === val)
-                            return c ? `${c.name} (${formatRupiah(c.currentPrice)}/${c.unit})` : val
-                          }}
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectPopup>
-                        {COMMODITIES_DATA.map((c) => (
-                          <SelectItem key={c.id} value={c.id}>
-                            {c.name} ({formatRupiah(c.currentPrice)}/{c.unit})
-                          </SelectItem>
-                        ))}
-                      </SelectPopup>
-                    </Select>
-                  </div>
-
-                  <div className="w-28">
-                    <Input
-                      type="number"
-                      min={0.1}
-                      step={0.5}
-                      value={addQty}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                        setAddQty(parseFloat(e.target.value) || 1)
-                      }
-                      size="md"
-                      placeholder="Jumlah"
-                    />
-                  </div>
-
-                  <Button
-                    variant="default"
-                    size="md"
-                    onClick={handleAddToCart}
+                return (
+                  <Card
+                    key={item.id}
+                    variant="raised"
+                    className="bg-white border border-slate-200/90 shadow-xs hover:border-slate-300 hover:shadow-md transition-all dark:bg-slate-900/30 dark:border-slate-800/50"
                   >
-                    <PlusIcon className="size-4" />
-                    Tambah
-                  </Button>
-                </div>
-
-                {/* Basket Items List */}
-                <div className="divide-y divide-(length:--sp-rw-border-default) divide-(--sp-rw-border-translucent)">
-                  {cart.map((item) => {
-                    const commodity = COMMODITIES_DATA.find((c) => c.id === item.commodityId)
-                    if (!commodity) return null
-                    const subtotal = commodity.currentPrice * item.qty
-
-                    return (
-                      <div
-                        key={item.commodityId}
-                        className="flex items-center justify-between py-2.5 text-sm"
-                      >
-                        <div>
-                          <div className="font-semibold text-foreground text-sm sm:text-base">{commodity.name}</div>
-                          <div className="text-xs sm:text-sm text-muted-foreground">
-                            {item.qty} {commodity.unit} &times; {formatRupiah(commodity.currentPrice)}
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-3">
-                          <span className="font-mono font-bold text-sm sm:text-base text-foreground">
-                            {formatRupiah(subtotal)}
+                    <CardHeader>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <CardTitle className="text-base font-bold text-foreground">
+                            {item.name}
+                          </CardTitle>
+                          <span className="inline-flex items-center rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-xs font-semibold text-foreground border border-slate-200/60 dark:border-slate-700/60">
+                            {item.categoryLabel}
                           </span>
-                          <Button
-                            variant="ghost"
-                            size="xs"
-                            aria-label={`Hapus ${commodity.name}`}
-                            onClick={() => handleRemoveFromCart(item.commodityId)}
-                          >
-                            <Trash2Icon className="size-4 text-destructive" />
-                          </Button>
                         </div>
+                        <CardDescription className="text-xs sm:text-sm mt-0.5">
+                          Rata-rata: {formatRupiah(item.currentPrice)} / {item.unit}
+                        </CardDescription>
                       </div>
-                    )
-                  })}
+                      <CardAction>
+                        {item.status === 'naik' && (
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#741221] dark:bg-[#881a2c] px-2.5 py-1 text-xs font-bold text-white shadow-2xs">
+                            <TrendingUpIcon className="size-3.5 shrink-0 text-white" />
+                            <span>Naik</span>
+                          </span>
+                        )}
+                        {item.status === 'turun' && (
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-700 dark:bg-emerald-600 px-2.5 py-1 text-xs font-bold text-white shadow-2xs">
+                            <TrendingDownIcon className="size-3.5 shrink-0 text-white" />
+                            <span>Turun</span>
+                          </span>
+                        )}
+                        {item.status === 'stabil' && (
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-600 dark:bg-slate-700 px-2.5 py-1 text-xs font-bold text-white shadow-2xs">
+                            <MinusIcon className="size-3.5 shrink-0 text-white" />
+                            <span>Stabil</span>
+                          </span>
+                        )}
+                      </CardAction>
+                    </CardHeader>
 
-                  {cart.length === 0 && (
-                    <div className="py-8 text-center text-sm text-muted-foreground">
-                      Daftar belanja masih kosong. Tambahkan komoditas di atas.
-                    </div>
-                  )}
-                </div>
-              </CardPanel>
-            </Card>
-          </div>
+                    <CardPanel>
+                      <div className="divide-y divide-(length:--sp-rw-border-default) divide-(--sp-rw-border-translucent)">
+                        {markets.map((market) => {
+                          const price = item.marketPrices[market.id] ?? item.currentPrice
+                          const isLowest = price === minPrice
+                          const isHighest = price === maxPrice && minPrice !== maxPrice
 
-          {/* Right Column: Comparative Totals */}
-          <div className="space-y-4 lg:col-span-5">
-            <Card
-              variant="raised"
-              className="bg-white border border-slate-200/90 shadow-xs dark:bg-slate-900/30 dark:border-slate-800/50"
-            >
-              <CardHeader>
-                <CardTitle className="text-base font-semibold">
-                  Perbandingan Total Belanja
-                </CardTitle>
-                <CardDescription className="text-xs sm:text-sm">
-                  Perkiraan total belanja di 6 pasar Trenggalek.
-                </CardDescription>
-              </CardHeader>
-
-              <CardPanel className="space-y-4">
-                {cheapestMarket && (
-                  <div className="rounded-lg border border-emerald-300/80 bg-emerald-50/90 dark:bg-emerald-950/40 dark:border-emerald-800/50 p-4 shadow-2xs">
-                    <div className="text-xs font-semibold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
-                      Pasar Paling Hemat
-                    </div>
-                    <div className="mt-1 text-xl font-bold text-foreground">
-                      {cheapestMarket.marketName}
-                    </div>
-                    <div className="text-xs text-muted-foreground mt-0.5">
-                      {cheapestMarket.location} &bull; {cheapestMarket.specialty}
-                    </div>
-                    <div className="mt-3 text-3xl font-extrabold font-mono text-emerald-800 dark:text-emerald-300">
-                      {formatRupiah(cheapestMarket.total)}
-                    </div>
-                    {potentialSavings > 0 && (
-                      <div className="mt-2.5 text-xs sm:text-sm font-semibold text-emerald-800 dark:text-emerald-300 bg-emerald-100/80 dark:bg-emerald-900/50 p-2 rounded-md">
-                        Hemat {formatRupiah(potentialSavings)} dibanding pasar lain.
+                          return (
+                            <div
+                              key={market.id}
+                              className={`flex items-center justify-between py-2 text-sm ${isLowest
+                                ? 'bg-emerald-100/60 dark:bg-emerald-950/40 font-semibold text-emerald-950 dark:text-emerald-100 px-2.5 rounded-md border border-emerald-200/70'
+                                : 'px-2'
+                                }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <span>{market.name}</span>
+                                {isLowest && (
+                                  <Badge variant="success">
+                                    Termurah
+                                  </Badge>
+                                )}
+                                {isHighest && (
+                                  <span className="text-xs text-muted-foreground">
+                                    Tertinggi
+                                  </span>
+                                )}
+                              </div>
+                              <span className="font-mono font-bold">{formatRupiah(price)}</span>
+                            </div>
+                          )
+                        })}
                       </div>
-                    )}
-                  </div>
-                )}
+                    </CardPanel>
+                  </Card>
+                )
+              })}
+            </div>
 
-                <div className="space-y-2">
-                  <div className="text-xs font-semibold text-muted-foreground">
-                    Urutan Semua Pasar:
-                  </div>
-                  <div className="divide-y divide-slate-200/70 dark:divide-slate-800/60 rounded-xl border border-slate-200/80 bg-slate-50/70 dark:bg-slate-900/40 p-2">
-                    {cartSummary.map((m, index) => {
-                      const diff = m.total - cheapestMarket.total
-                      return (
-                        <div
-                          key={m.marketId}
-                          className="flex items-center justify-between py-2 text-xs sm:text-sm"
+            {filteredCommodities.length === 0 && (
+              <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 dark:bg-slate-900/30 p-10 text-center text-sm text-muted-foreground">
+                Tidak ditemukan data komoditas yang sesuai dengan kriteria pencarian atau filter.
+              </div>
+            )}
+          </TabsPanel>
+
+          {/* TAB 3: Hitung Belanja */}
+          <TabsPanel value="kalkulator" className="mt-4 space-y-6">
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+              {/* Left Column: Basket */}
+              <div className="space-y-4 lg:col-span-7">
+                <Card
+                  variant="raised"
+                  className="bg-white border border-slate-200/90 shadow-xs dark:bg-slate-900/30 dark:border-slate-800/50"
+                >
+                  <CardHeader>
+                    <CardTitle className="text-base font-semibold">
+                      Daftar Belanja
+                    </CardTitle>
+                    <CardDescription className="text-xs sm:text-sm">
+                      Pilih komoditas dan jumlah untuk menghitung perkiraan belanja.
+                    </CardDescription>
+                  </CardHeader>
+
+                  <CardPanel className="space-y-4">
+                    {/* Add Item Row */}
+                    <div className="flex flex-col gap-2 rounded-xl border border-slate-200/80 bg-slate-50/80 dark:bg-slate-900/40 p-3 sm:flex-row sm:items-center">
+                      <div className="flex-1">
+                        <Select
+                          value={selectedCommodityToAdd}
+                          onValueChange={(val) => setSelectedCommodityToAdd((val as string) ?? '')}
                         >
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold text-muted-foreground">
-                              #{index + 1}
-                            </span>
-                            <span className="font-medium text-foreground">{m.marketName}</span>
-                            {diff > 0 && (
-                              <span className="text-xs text-muted-foreground font-mono">
-                                (+{formatRupiah(diff)})
+                          <SelectTrigger size="md" className="w-full">
+                            <SelectValue placeholder="Pilih komoditas...">
+                              {(val: string | null) => {
+                                if (!val) return null
+                                const c = commodities.find((item) => item.id === val)
+                                return c ? `${c.name} (${formatRupiah(c.currentPrice)}/${c.unit})` : val
+                              }}
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectPopup>
+                            {commodities.map((c) => (
+                              <SelectItem key={c.id} value={c.id}>
+                                {c.name} ({formatRupiah(c.currentPrice)}/{c.unit})
+                              </SelectItem>
+                            ))}
+                          </SelectPopup>
+                        </Select>
+                      </div>
+
+                      <div className="w-28">
+                        <Input
+                          type="number"
+                          min={0.1}
+                          step={0.5}
+                          value={addQty}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                            setAddQty(parseFloat(e.target.value) || 1)
+                          }
+                          size="md"
+                          placeholder="Jumlah"
+                        />
+                      </div>
+
+                      <Button
+                        variant="default"
+                        size="md"
+                        onClick={handleAddToCart}
+                      >
+                        <PlusIcon className="size-4" />
+                        Tambah
+                      </Button>
+                    </div>
+
+                    {/* Basket Items List */}
+                    <div className="divide-y divide-(length:--sp-rw-border-default) divide-(--sp-rw-border-translucent)">
+                      {cart.map((item) => {
+                        const commodity = commodities.find((c) => c.id === item.commodityId)
+                        if (!commodity) return null
+                        const subtotal = commodity.currentPrice * item.qty
+
+                        return (
+                          <div
+                            key={item.commodityId}
+                            className="flex items-center justify-between py-2.5 text-sm"
+                          >
+                            <div>
+                              <div className="font-semibold text-foreground text-sm sm:text-base">{commodity.name}</div>
+                              <div className="text-xs sm:text-sm text-muted-foreground">
+                                {item.qty} {commodity.unit} &times; {formatRupiah(commodity.currentPrice)}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-3">
+                              <span className="font-mono font-bold text-sm sm:text-base text-foreground">
+                                {formatRupiah(subtotal)}
                               </span>
-                            )}
+                              <Button
+                                variant="ghost"
+                                size="xs"
+                                aria-label={`Hapus ${commodity.name}`}
+                                onClick={() => handleRemoveFromCart(item.commodityId)}
+                              >
+                                <Trash2Icon className="size-4 text-destructive" />
+                              </Button>
+                            </div>
                           </div>
-                          <span className="font-mono font-semibold text-foreground">
-                            {formatRupiah(m.total)}
-                          </span>
+                        )
+                      })}
+
+                      {cart.length === 0 && (
+                        <div className="py-8 text-center text-sm text-muted-foreground">
+                          Daftar belanja masih kosong. Tambahkan komoditas di atas.
                         </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              </CardPanel>
-            </Card>
-          </div>
-        </div>
-      </TabsPanel>
-
-      {/* TAB 4: Daftar Pasar */}
-      <TabsPanel value="info-pasar" className="mt-4 space-y-4">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {TRENGGALEK_MARKETS.map((market) => (
-            <Card
-              key={market.id}
-              variant="raised"
-              className="flex flex-col justify-between bg-white border border-slate-200/90 shadow-xs hover:border-slate-300 hover:shadow-md transition-all dark:bg-slate-900/30 dark:border-slate-800/50"
-            >
-              <div>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <Badge variant="secondary" size="sm">
-                      {market.district}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground font-mono">
-                      {market.location}
-                    </span>
-                  </div>
-                  <CardTitle className="mt-2 text-lg font-bold">
-                    {market.name}
-                  </CardTitle>
-                  <CardDescription className="text-xs sm:text-sm font-medium">
-                    {market.specialty}
-                  </CardDescription>
-                </CardHeader>
-
-                <CardPanel className="space-y-3 text-xs sm:text-sm text-muted-foreground">
-                  <p className="text-foreground leading-relaxed">{market.description}</p>
-                  <Separator />
-                  <div className="flex items-center gap-2">
-                    <MapPinIcon className="size-4 shrink-0 text-foreground" />
-                    <span>{market.address}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <ClockIcon className="size-4 shrink-0 text-foreground" />
-                    <span>{market.openHours}</span>
-                  </div>
-                </CardPanel>
+                      )}
+                    </div>
+                  </CardPanel>
+                </Card>
               </div>
 
-              <CardFooter className="mt-4 border-t border-(length:--sp-rw-border-default) border-(--sp-rw-border-translucent) pt-3">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  width="full"
-                  onClick={() => {
+              {/* Right Column: Comparative Totals */}
+              <div className="space-y-4 lg:col-span-5">
+                <Card
+                  variant="raised"
+                  className="bg-white border border-slate-200/90 shadow-xs dark:bg-slate-900/30 dark:border-slate-800/50"
+                >
+                  <CardHeader>
+                    <CardTitle className="text-base font-semibold">
+                      Perbandingan Total Belanja
+                    </CardTitle>
+                    <CardDescription className="text-xs sm:text-sm">
+                      Perkiraan total belanja di {markets.length} pasar Trenggalek.
+                    </CardDescription>
+                  </CardHeader>
+
+                  <CardPanel className="space-y-4">
+                    {cheapestMarket && (
+                      <div className="rounded-lg border border-emerald-300/80 bg-emerald-50/90 dark:bg-emerald-950/40 dark:border-emerald-800/50 p-4 shadow-2xs">
+                        <div className="text-xs font-semibold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
+                          Pasar Paling Hemat
+                        </div>
+                        <div className="mt-1 text-xl font-bold text-foreground">
+                          {cheapestMarket.marketName}
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                          Data live SISKAPERBAPO &bull; {formatTanggalPanjang(liveData.tanggal)}
+                        </div>
+                        <div className="mt-3 text-3xl font-extrabold font-mono text-emerald-800 dark:text-emerald-300">
+                          {formatRupiah(cheapestMarket.total)}
+                        </div>
+                        {potentialSavings > 0 && (
+                          <div className="mt-2.5 text-xs sm:text-sm font-semibold text-emerald-800 dark:text-emerald-300 bg-emerald-100/80 dark:bg-emerald-900/50 p-2 rounded-md">
+                            Hemat {formatRupiah(potentialSavings)} dibanding pasar lain.
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="space-y-2">
+                      <div className="text-xs font-semibold text-muted-foreground">
+                        Urutan Semua Pasar:
+                      </div>
+                      <div className="divide-y divide-slate-200/70 dark:divide-slate-800/60 rounded-xl border border-slate-200/80 bg-slate-50/70 dark:bg-slate-900/40 p-2">
+                        {cartSummary.map((m, index) => {
+                          const diff = m.total - cheapestMarket.total
+                          return (
+                            <div
+                              key={m.marketId}
+                              className="flex items-center justify-between py-2 text-xs sm:text-sm"
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold text-muted-foreground">
+                                  #{index + 1}
+                                </span>
+                                <span className="font-medium text-foreground">{m.marketName}</span>
+                                {diff > 0 && (
+                                  <span className="text-xs text-muted-foreground font-mono">
+                                    (+{formatRupiah(diff)})
+                                  </span>
+                                )}
+                              </div>
+                              <span className="font-mono font-semibold text-foreground">
+                                {formatRupiah(m.total)}
+                              </span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </CardPanel>
+                </Card>
+              </div>
+            </div>
+          </TabsPanel>
+
+          {/* TAB 4: Daftar Pasar */}
+          <TabsPanel value="info-pasar" className="mt-4 space-y-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {markets.map((market) => (
+                <MarketInfoCard
+                  key={market.id}
+                  market={market}
+                  commodities={commodities}
+                  dateLabel={formatTanggalPanjang(liveData.tanggal)}
+                  onSelect={() => {
                     navigate({
                       search: (prev) => ({
                         ...prev,
@@ -1385,54 +1513,61 @@ function KulakanHomePage() {
                       }),
                     })
                   }}
-                >
-                  Lihat Harga di {market.name}
-                </Button>
-              </CardFooter>
-            </Card>
-          ))}
-        </div>
-      </TabsPanel>
-    </Tabs>
-  </main>
-
-  {/* Footer */}
-  <footer className="mt-16 border-t border-slate-200/80 bg-slate-50/70 py-10 dark:bg-slate-900/30 dark:border-slate-800">
-    <div className="mx-auto max-w-6xl px-4 sm:px-6">
-      <div className="flex flex-col items-center justify-between gap-4 text-center sm:flex-row sm:text-left">
-        <div>
-          <Link
-            to="/"
-            search={{}}
-            onClick={() => {
-              setSearchQuery('')
-              setDebouncedSearchQuery('')
-            }}
-            className="group inline-flex items-center justify-center gap-2.5 sm:justify-start rounded-lg p-1 -m-1 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 cursor-pointer"
-            aria-label="Kembali ke Beranda Kulakan"
-          >
-            <KulakanMark className="size-7 rounded-lg" iconClassName="size-4" />
-            <div className="flex items-center gap-2">
-              <span className="text-lg font-bold tracking-tight text-foreground transition-colors group-hover:text-emerald-700 dark:group-hover:text-emerald-400">
-                Kulakan
-              </span>
-              <span className="text-xs text-muted-foreground">&bull;</span>
-              <span className="text-xs font-mono font-medium text-muted-foreground transition-colors group-hover:text-foreground">
-                kulakan.nggalek.co
-              </span>
+                />
+              ))}
             </div>
-          </Link>
-          <p className="mt-1 text-xs sm:text-sm text-muted-foreground">
-            Informasi harga kebutuhan pokok harian di pasar-pasar Trenggalek.
-          </p>
-        </div>
+          </TabsPanel>
+        </Tabs>
+      </main>
 
-        <div className="text-xs sm:text-sm text-muted-foreground font-mono">
-          Trenggalek, Jawa Timur &bull; &copy; {new Date().getFullYear()} nggalek.co
+      {/* Footer */}
+      <footer className="mt-16 border-t border-slate-200/80 bg-slate-50/70 py-10 dark:bg-slate-900/30 dark:border-slate-800">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6">
+          <div className="flex flex-col items-center justify-between gap-4 text-center sm:flex-row sm:text-left">
+            <div>
+              <Link
+                to="/"
+                search={{}}
+                onClick={() => {
+                  setSearchQuery('')
+                  setDebouncedSearchQuery('')
+                }}
+                className="group inline-flex items-center justify-center gap-2.5 sm:justify-start rounded-lg p-1 -m-1 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 cursor-pointer"
+                aria-label="Kembali ke Beranda Kulakan"
+              >
+                <KulakanMark className="size-7 rounded-lg" iconClassName="size-4" />
+                <div className="flex items-center gap-2">
+                  <span className="text-lg font-bold tracking-tight text-foreground transition-colors group-hover:text-emerald-700 dark:group-hover:text-emerald-400">
+                    Kulakan
+                  </span>
+                  <span className="text-xs text-muted-foreground">&bull;</span>
+                  <span className="text-xs font-mono font-medium text-muted-foreground transition-colors group-hover:text-foreground">
+                    kulakan.nggalek.co
+                  </span>
+                </div>
+              </Link>
+              <p className="mt-1 text-xs sm:text-sm text-muted-foreground">
+                Informasi harga kebutuhan pokok harian di pasar-pasar Trenggalek.
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Sumber data:{' '}
+                <a
+                  href={liveData.sourceUrl || SISKAPERBAPO_BASE}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-emerald-700 hover:underline dark:text-emerald-400"
+                >
+                  SISKAPERBAPO Disperindag Jawa Timur
+                </a>
+              </p>
+            </div>
+
+            <div className="text-xs sm:text-sm text-muted-foreground font-mono">
+              Trenggalek, Jawa Timur &bull; &copy; {new Date().getFullYear()} nggalek.co
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
-  </footer>
+      </footer>
     </div>
   )
 }

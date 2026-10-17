@@ -1,4 +1,5 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, useNavigate, Link } from '@tanstack/react-router'
+import { KulakanLogo, KulakanMark } from '@/components/KulakanLogo'
 import { useState, useMemo, useEffect } from 'react'
 import {
   TrendingDownIcon,
@@ -373,24 +374,12 @@ function KulakanHomePage() {
       {/* Top Navigation */}
       <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-sm">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3.5 sm:px-6">
-          <div className="flex items-center gap-3">
-            <div className="flex size-9 items-center justify-center rounded-lg bg-foreground text-background font-bold text-base">
-              K
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xl font-bold tracking-tight text-foreground">
-                  Kulakan
-                </span>
-                <Badge variant="secondary" size="sm">
-                  Trenggalek
-                </Badge>
-              </div>
-              <p className="text-xs text-muted-foreground font-mono">
-                kulakan.nggalek.co
-              </p>
-            </div>
-          </div>
+          <KulakanLogo
+            onClick={() => {
+              setSearchQuery('')
+              setDebouncedSearchQuery('')
+            }}
+          />
 
           <div className="flex items-center gap-3">
             <Button
@@ -1406,13 +1395,27 @@ function KulakanHomePage() {
     <div className="mx-auto max-w-6xl px-4 sm:px-6">
       <div className="flex flex-col items-center justify-between gap-4 text-center sm:flex-row sm:text-left">
         <div>
-          <div className="flex items-center justify-center gap-2 sm:justify-start">
-            <span className="text-lg font-bold tracking-tight text-foreground">Kulakan</span>
-            <span className="text-xs text-muted-foreground">&bull;</span>
-            <span className="text-xs font-mono font-medium text-foreground">
-              kulakan.nggalek.co
-            </span>
-          </div>
+          <Link
+            to="/"
+            search={{}}
+            onClick={() => {
+              setSearchQuery('')
+              setDebouncedSearchQuery('')
+            }}
+            className="group inline-flex items-center justify-center gap-2.5 sm:justify-start rounded-lg p-1 -m-1 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 cursor-pointer"
+            aria-label="Kembali ke Beranda Kulakan"
+          >
+            <KulakanMark className="size-6 transition-transform duration-200 group-hover:scale-110" idPrefix="klk-footer" />
+            <div className="flex items-center gap-2">
+              <span className="text-lg font-bold tracking-tight text-foreground transition-colors group-hover:text-emerald-700 dark:group-hover:text-emerald-400">
+                Kulakan
+              </span>
+              <span className="text-xs text-muted-foreground">&bull;</span>
+              <span className="text-xs font-mono font-medium text-muted-foreground transition-colors group-hover:text-foreground">
+                kulakan.nggalek.co
+              </span>
+            </div>
+          </Link>
           <p className="mt-1 text-xs sm:text-sm text-muted-foreground">
             Informasi harga kebutuhan pokok harian di pasar-pasar Trenggalek.
           </p>

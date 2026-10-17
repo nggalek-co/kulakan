@@ -956,8 +956,102 @@ function KulakanHomePage() {
 
       {/* TAB 2: Bandingkan Pasar */}
       <TabsPanel value="pasar-termurah" className="mt-4 space-y-4">
+        {/* Filter Bar for Tab 2 */}
+        <div className="flex flex-col gap-3 rounded-lg border border-(length:--sp-rw-border-default) border-(--sp-rw-border-translucent) bg-muted/10 p-3 sm:flex-row sm:items-center sm:justify-between">
+          {/* Category selector */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-bold text-foreground mr-1">Kategori:</span>
+            <Button
+              variant={selectedCategory === 'all' ? 'default' : 'outline'}
+              size="md"
+              onClick={() => handleCategoryChange('all')}
+            >
+              Semua
+            </Button>
+            <Button
+              variant={selectedCategory === 'beras' ? 'default' : 'outline'}
+              size="md"
+              onClick={() => handleCategoryChange('beras')}
+            >
+              Beras
+            </Button>
+            <Button
+              variant={selectedCategory === 'bumbu' ? 'default' : 'outline'}
+              size="md"
+              onClick={() => handleCategoryChange('bumbu')}
+            >
+              Bumbu &amp; Sayur
+            </Button>
+            <Button
+              variant={selectedCategory === 'minyak-gula' ? 'default' : 'outline'}
+              size="md"
+              onClick={() => handleCategoryChange('minyak-gula')}
+            >
+              Minyak &amp; Gula
+            </Button>
+            <Button
+              variant={selectedCategory === 'protein' ? 'default' : 'outline'}
+              size="md"
+              onClick={() => handleCategoryChange('protein')}
+            >
+              Lauk &amp; Daging
+            </Button>
+          </div>
+
+          {/* Status filter */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Button
+              variant={statusFilter === 'all' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => handleStatusFilterChange('all')}
+            >
+              Semua ({totalItems})
+            </Button>
+            <Button
+              variant={statusFilter === 'turun' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => handleStatusFilterChange('turun')}
+              className={
+                statusFilter === 'turun'
+                  ? 'bg-emerald-700 text-white hover:bg-emerald-800'
+                  : 'text-emerald-800 border-emerald-300/80 hover:bg-emerald-50 dark:text-emerald-300 dark:border-emerald-800'
+              }
+            >
+              <TrendingDownIcon className="size-4" />
+              <span>Turun ({fallingItems.length})</span>
+            </Button>
+            <Button
+              variant={statusFilter === 'naik' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => handleStatusFilterChange('naik')}
+              className={
+                statusFilter === 'naik'
+                  ? 'bg-[#741221] text-white hover:bg-[#600f1c] dark:bg-[#881a2c]'
+                  : 'text-[#741221] border-[#741221]/40 hover:bg-rose-50 dark:text-rose-300 dark:border-rose-900'
+              }
+            >
+              <TrendingUpIcon className="size-4" />
+              <span>Naik ({risingItems.length})</span>
+            </Button>
+            <Button
+              variant={statusFilter === 'stabil' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => handleStatusFilterChange('stabil')}
+              className={
+                statusFilter === 'stabil'
+                  ? 'bg-slate-700 text-white hover:bg-slate-800'
+                  : 'text-slate-700 border-slate-300/80 hover:bg-slate-50 dark:text-slate-300 dark:border-slate-800'
+              }
+            >
+              <MinusIcon className="size-4" />
+              <span>Stabil ({stableItems.length})</span>
+            </Button>
+          </div>
+        </div>
+
+        {/* Comparison Cards Grid */}
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          {COMMODITIES_DATA.map((item) => {
+          {filteredCommodities.map((item) => {
             const prices = Object.entries(item.marketPrices)
             const minPrice = Math.min(...prices.map(([, p]) => p))
             const maxPrice = Math.max(...prices.map(([, p]) => p))
@@ -1043,6 +1137,12 @@ function KulakanHomePage() {
             )
           })}
         </div>
+
+        {filteredCommodities.length === 0 && (
+          <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 dark:bg-slate-900/30 p-10 text-center text-sm text-muted-foreground">
+            Tidak ditemukan data komoditas yang sesuai dengan kriteria pencarian atau filter.
+          </div>
+        )}
       </TabsPanel>
 
       {/* TAB 3: Hitung Belanja */}

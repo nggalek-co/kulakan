@@ -1405,7 +1405,7 @@ function KulakanHomePage() {
             className="group inline-flex items-center justify-center gap-2.5 sm:justify-start rounded-lg p-1 -m-1 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 cursor-pointer"
             aria-label="Kembali ke Beranda Kulakan"
           >
-            <KulakanMark className="size-6 transition-transform duration-200 group-hover:scale-110" idPrefix="klk-footer" />
+            <KulakanMark className="size-7 rounded-lg" iconClassName="size-4" />
             <div className="flex items-center gap-2">
               <span className="text-lg font-bold tracking-tight text-foreground transition-colors group-hover:text-emerald-700 dark:group-hover:text-emerald-400">
                 Kulakan

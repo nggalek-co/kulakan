@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "skills": {
+    "siteplane-ui": {
+      "source": "ui.siteplane.io",
+      "sourceUrl": "https://ui.siteplane.io",
+      "sourceType": "well-known",
+      "computedHash": "9ca7652afe814a3b3a13fb730ce2e11c67ecd23d1c7a8a5bdb33150fcfbb54e3",
+      "wellKnownDigest": "sha256:ddb0eb144148c9d97fddfdd20ddfea8824cd929bc43cfa541e7473017aa0045b"
+    }
+  }
+}

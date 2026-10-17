@@ -1,0 +1,35 @@
+@import "./siteplane/system/styles/base.css";
+@source ".";
+
+:root,
+:is(.light, [data-theme="light"]) {
+  --sp-rw-bg-accent: #059669;
+  --sp-rw-fg-accent: #047857;
+  --sp-rw-fg-on-accent: #ffffff;
+  --sp-rw-bg-accent-translucent: rgb(5 150 105 / 16%);
+  --sp-rw-border-accent: rgb(5 150 105 / 40%);
+  --sp-rw-border-focus: #059669;
+}
+
+:is(.dark, [data-theme="dark"]) {
+  --sp-rw-bg-accent: #10b981;
+  --sp-rw-fg-accent: #6ee7b7;
+  --sp-rw-fg-on-accent: #ffffff;
+  --sp-rw-bg-accent-translucent: rgb(16 185 129 / 20%);
+  --sp-rw-border-accent: rgb(110 231 183 / 60%);
+  --sp-rw-border-focus: #34d399;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+}

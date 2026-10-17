@@ -804,11 +804,13 @@ function KulakanHomePage() {
                       {/* Card Footer */}
                       <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-muted-foreground">
                         <span>
-                          {selectedMarket === 'all'
-                            ? `Rentang: ${formatRupiah(minPrice)} - ${formatRupiah(maxPrice)}`
-                            : `Pasar: ${TRENGGALEK_MARKETS.find((m) => m.id === selectedMarket)?.name}`}
+                          Rentang harga: {formatRupiah(minPrice)} - {formatRupiah(maxPrice)}
                         </span>
-                        <span className="font-mono">{item.lastUpdated}</span>
+                        {selectedMarket !== 'all' && (
+                          <span className="font-medium text-foreground">
+                            {TRENGGALEK_MARKETS.find((m) => m.id === selectedMarket)?.name}
+                          </span>
+                        )}
                       </div>
                     </Card>
                   )
@@ -854,6 +856,10 @@ function KulakanHomePage() {
                           ? item.currentPrice
                           : (item.marketPrices[selectedMarket] ?? item.currentPrice)
 
+                      const prices = Object.entries(item.marketPrices)
+                      const minPrice = Math.min(...prices.map(([, p]) => p))
+                      const maxPrice = Math.max(...prices.map(([, p]) => p))
+
                       return (
                         <TableRow
                           key={item.id}
@@ -865,7 +871,7 @@ function KulakanHomePage() {
                               {item.name}
                             </div>
                             <div className="text-xs text-muted-foreground mt-0.5">
-                              Pembaruan: {item.lastUpdated}
+                              Rentang harga: {formatRupiah(minPrice)} - {formatRupiah(maxPrice)}
                             </div>
                           </TableCell>
                           <TableCell>

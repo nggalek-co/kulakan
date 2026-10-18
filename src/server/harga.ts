@@ -12,6 +12,8 @@
  * Semua kode di file ini dijalankan di server.
  */
 import { createServerFn } from '@tanstack/react-start'
+import { setResponseHeader } from '@tanstack/react-start/server'
+import { DAY, cacheHeaders, caches, setCacheHeaders } from '@netlify/cache'
 
 import {
   DEFAULT_KABKOTA,
@@ -23,6 +25,7 @@ import {
   type LivePriceData,
   type PriceStatus,
 } from '@/data/marketData'
+import { seedTrenggalek } from '@/data/seedTrenggalek'
 
 interface RawCommodity {
   name: string
@@ -40,8 +43,65 @@ interface RawMarket {
   psr_nama: string
 }
 
+const BROWSER_USER_AGENT =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+
+const DEFAULT_TRENGGALEK_MARKETS: LiveMarket[] = [
+  { id: '96', name: 'Pasar Basah' },
+  { id: '137', name: 'Pasar Subuh' },
+]
+
+function getDefaultMarkets(kabkota: string): LiveMarket[] {
+  if (kabkota === DEFAULT_KABKOTA) {
+    return DEFAULT_TRENGGALEK_MARKETS
+  }
+  return []
+}
+
+const NETLIFY_CACHE_NAME = 'kulakan-price-data'
+const MEMORY_CACHE_TTL_MS = 60 * 60 * 1000 // 1 jam di memori runtime
+
+const memoryCache = new Map<string, { at: number; data: LivePriceData }>()
 const CACHE_TTL_MS = 5 * 60 * 1000
 const tableCache = new Map<string, { at: number; html: string }>()
+
+const isNetlify = typeof process !== 'undefined' && process.env.NETLIFY === 'true'
+
+async function getDurableCache(kabkota: string): Promise<LivePriceData | null> {
+  if (!isNetlify) return null
+  try {
+    const cache = await caches.open(NETLIFY_CACHE_NAME)
+    const match = await cache.match(`https://kulakan.internal/live-data/${kabkota}`)
+    if (match) {
+      return (await match.json()) as LivePriceData
+    }
+  } catch (error) {
+    console.warn('[harga] Gagal membaca durable cache:', error)
+  }
+  return null
+}
+
+async function putDurableCache(kabkota: string, data: LivePriceData): Promise<void> {
+  if (!isNetlify) return
+  try {
+    const cache = await caches.open(NETLIFY_CACHE_NAME)
+    const key = `https://kulakan.internal/live-data/${kabkota}`
+    const response = new Response(JSON.stringify(data), {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })
+    const cacheable = setCacheHeaders(response, {
+      ttl: DAY,
+      swr: DAY,
+      durable: true,
+      tags: [`kulakan-${kabkota}`],
+    })
+    await cache.put(key, cacheable)
+  } catch (error) {
+    console.warn('[harga] Gagal menyimpan ke durable cache:', error)
+  }
+}
 
 function stripTags(html: string): string {
   return html.replace(/<[^>]*>/g, ' ')
@@ -125,8 +185,11 @@ async function postTable(kabkota: string, tanggal: string, pasar = ''): Promise<
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
       'X-Requested-With': 'XMLHttpRequest',
+      Accept: 'text/html, */*; q=0.01',
+      'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
+      Origin: SISKAPERBAPO_BASE,
       Referer: `${SISKAPERBAPO_BASE}/harga/tabel`,
-      'User-Agent': 'Kulakan/1.0 (+https://kulakan.nggalek.co)',
+      'User-Agent': BROWSER_USER_AGENT,
     },
     body: body.toString(),
     signal: AbortSignal.timeout(15_000),
@@ -195,19 +258,32 @@ function hasPrices(html: string): boolean {
 }
 
 async function fetchMarkets(kabkota: string): Promise<LiveMarket[]> {
-  const response = await fetch(`${SISKAPERBAPO_BASE}/harga/pasar.json/${kabkota}`, {
-    headers: { 'User-Agent': 'Kulakan/1.0 (+https://kulakan.nggalek.co)' },
-    signal: AbortSignal.timeout(15_000),
-  })
+  try {
+    const response = await fetch(`${SISKAPERBAPO_BASE}/harga/pasar.json/${kabkota}`, {
+      headers: {
+        'User-Agent': BROWSER_USER_AGENT,
+        Accept: 'application/json, text/javascript, */*; q=0.01',
+        'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
+        Referer: `${SISKAPERBAPO_BASE}/harga/tabel`,
+      },
+      signal: AbortSignal.timeout(15_000),
+    })
 
-  if (!response.ok) {
-    throw new Error(`Gagal memuat daftar pasar (${response.status})`)
+    if (!response.ok) {
+      console.warn(`[harga] Gagal memuat daftar pasar (${response.status}), menggunakan pasar default`)
+      return getDefaultMarkets(kabkota)
+    }
+
+    const raw = (await response.json()) as RawMarket[]
+    const list = raw
+      .filter((market) => market.psr_nama)
+      .map((market) => ({ id: String(market.psr_id), name: market.psr_nama }))
+
+    return list.length > 0 ? list : getDefaultMarkets(kabkota)
+  } catch (error) {
+    console.warn('[harga] Gagal memuat daftar pasar, menggunakan pasar default:', error)
+    return getDefaultMarkets(kabkota)
   }
-
-  const raw = (await response.json()) as RawMarket[]
-  return raw
-    .filter((market) => market.psr_nama)
-    .map((market) => ({ id: String(market.psr_id), name: market.psr_nama }))
 }
 
 /** Cari tanggal terakhir (maks. 7 hari ke belakang) yang punya data harga. */
@@ -252,7 +328,7 @@ function buildPriceMap(rows: RawCommodity[]): Map<string, number> {
   return map
 }
 
-async function loadLiveData(kabkota: string): Promise<LivePriceData> {
+async function scrapeLiveData(kabkota: string): Promise<LivePriceData> {
   const [markets, tanggal] = await Promise.all([fetchMarkets(kabkota), resolveTanggal(kabkota)])
 
   const [aggregateHtml, ...marketHtml] = await Promise.all([
@@ -340,6 +416,61 @@ async function loadLiveData(kabkota: string): Promise<LivePriceData> {
   }
 }
 
+async function loadLiveData(kabkota: string): Promise<LivePriceData> {
+  // 1. Cek memory cache runtime
+  const mem = memoryCache.get(kabkota)
+  if (mem && Date.now() - mem.at < MEMORY_CACHE_TTL_MS) {
+    return mem.data
+  }
+
+  // 2. Cek Netlify durable cache (tersimpan hingga 24 jam di edge)
+  const durableData = await getDurableCache(kabkota)
+  if (durableData && durableData.commodities && durableData.commodities.length > 0) {
+    memoryCache.set(kabkota, { at: Date.now(), data: durableData })
+    return durableData
+  }
+
+  // 3. Scraping langsung ke SISKAPERBAPO
+  try {
+    const liveData = await scrapeLiveData(kabkota)
+    if (liveData.commodities && liveData.commodities.length > 0) {
+      memoryCache.set(kabkota, { at: Date.now(), data: liveData })
+      await putDurableCache(kabkota, liveData)
+      return liveData
+    }
+  } catch (error) {
+    console.warn('[harga] Gagal scrape live data SISKAPERBAPO:', error)
+  }
+
+  // 4. Fallback jika scraper terhambat (misal 403 / timeout / offline)
+  if (mem && mem.data.commodities && mem.data.commodities.length > 0) {
+    return mem.data
+  }
+  if (durableData && durableData.commodities && durableData.commodities.length > 0) {
+    return durableData
+  }
+  if (kabkota === DEFAULT_KABKOTA) {
+    return seedTrenggalek
+  }
+
+  throw new Error(`Data harga untuk ${kabkota} tidak tersedia saat ini.`)
+}
+
 export const getLiveMarketData = createServerFn({ method: 'GET' }).handler(
-  async (): Promise<LivePriceData> => loadLiveData(DEFAULT_KABKOTA),
+  async (): Promise<LivePriceData> => {
+    try {
+      const headers = cacheHeaders({
+        ttl: DAY,
+        swr: DAY,
+        durable: true,
+        tags: [`kulakan-api-${DEFAULT_KABKOTA}`],
+      })
+      for (const [name, value] of Object.entries(headers)) {
+        setResponseHeader(name, value)
+      }
+    } catch {
+      // Abaikan jika dipanggil di luar konteks HTTP request
+    }
+    return loadLiveData(DEFAULT_KABKOTA)
+  },
 )

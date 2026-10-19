@@ -45,6 +45,8 @@ export interface CommodityItem {
 }
 
 export interface LivePriceData {
+  /** Cadangan ditandai agar tidak disajikan sebagai pembaruan live. */
+  freshness?: 'live' | 'stale' | 'seed'
   kabkota: string
   kabkotaLabel: string
   /** Tanggal data yang ditampilkan, format `YYYY-MM-DD`. */

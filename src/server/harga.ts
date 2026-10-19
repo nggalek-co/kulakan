@@ -13,7 +13,7 @@
  */
 import { createServerFn } from '@tanstack/react-start'
 import { setResponseHeader } from '@tanstack/react-start/server'
-import { DAY, cacheHeaders, caches, setCacheHeaders } from '@netlify/cache'
+import { DAY, caches, setCacheHeaders } from '@netlify/cache'
 
 import {
   DEFAULT_KABKOTA,
@@ -59,7 +59,7 @@ function getDefaultMarkets(kabkota: string): LiveMarket[] {
 }
 
 const NETLIFY_CACHE_NAME = 'kulakan-price-data'
-const MEMORY_CACHE_TTL_MS = 60 * 60 * 1000 // 1 jam di memori runtime
+const MEMORY_CACHE_TTL_MS = 5 * 60 * 1000 // 5 menit sejak pengambilan sumber
 
 const memoryCache = new Map<string, { at: number; data: LivePriceData }>()
 const CACHE_TTL_MS = 5 * 60 * 1000
@@ -405,6 +405,7 @@ async function scrapeLiveData(kabkota: string): Promise<LivePriceData> {
   categories.sort((a, b) => Number(a.id === 'lainnya') - Number(b.id === 'lainnya'))
 
   return {
+    freshness: 'live',
     kabkota,
     kabkotaLabel: kabkota === DEFAULT_KABKOTA ? DEFAULT_KABKOTA_LABEL : kabkota,
     tanggal,
@@ -419,13 +420,13 @@ async function scrapeLiveData(kabkota: string): Promise<LivePriceData> {
 async function loadLiveData(kabkota: string): Promise<LivePriceData> {
   // 1. Cek memory cache runtime
   const mem = memoryCache.get(kabkota)
-  if (mem && Date.now() - mem.at < MEMORY_CACHE_TTL_MS) {
+  if (mem && isFresh(mem.data)) {
     return mem.data
   }
 
-  // 2. Cek Netlify durable cache (tersimpan hingga 24 jam di edge)
+  // Cache tahan lama disimpan untuk cadangan, bukan dianggap segar selama 24 jam.
   const durableData = await getDurableCache(kabkota)
-  if (durableData && durableData.commodities && durableData.commodities.length > 0) {
+  if (durableData && durableData.commodities.length > 0 && isFresh(durableData)) {
     memoryCache.set(kabkota, { at: Date.now(), data: durableData })
     return durableData
   }
@@ -444,33 +445,30 @@ async function loadLiveData(kabkota: string): Promise<LivePriceData> {
 
   // 4. Fallback jika scraper terhambat (misal 403 / timeout / offline)
   if (mem && mem.data.commodities && mem.data.commodities.length > 0) {
-    return mem.data
+    return { ...mem.data, freshness: 'stale' }
   }
   if (durableData && durableData.commodities && durableData.commodities.length > 0) {
-    return durableData
+    return { ...durableData, freshness: 'stale' }
   }
   if (kabkota === DEFAULT_KABKOTA) {
-    return seedTrenggalek
+    return { ...seedTrenggalek, freshness: 'seed' }
   }
 
   throw new Error(`Data harga untuk ${kabkota} tidak tersedia saat ini.`)
 }
 
+// Waktu asli sumber tetap menjadi patokan meskipun cache disalin ke runtime baru.
+function isFresh(data: LivePriceData): boolean {
+  const age = Date.now() - Date.parse(data.fetchedAt)
+  return data.freshness === 'live' && age >= 0 && age < MEMORY_CACHE_TTL_MS
+}
+
 export const getLiveMarketData = createServerFn({ method: 'GET' }).handler(
   async (): Promise<LivePriceData> => {
-    try {
-      const headers = cacheHeaders({
-        ttl: DAY,
-        swr: DAY,
-        durable: true,
-        tags: [`kulakan-api-${DEFAULT_KABKOTA}`],
-      })
-      for (const [name, value] of Object.entries(headers)) {
-        setResponseHeader(name, value)
-      }
-    } catch {
-      // Abaikan jika dipanggil di luar konteks HTTP request
-    }
+    // Cache data dikelola di atas; respons transport tidak boleh menahan fallback.
+    setResponseHeader('Cache-Control', 'no-store')
+    setResponseHeader('Netlify-CDN-Cache-Control', 'no-store')
+    setResponseHeader('CDN-Cache-Control', 'no-store')
     return loadLiveData(DEFAULT_KABKOTA)
   },
 )

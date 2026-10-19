@@ -289,6 +289,10 @@ function KulakanHomePage() {
   // Data diambil di sisi klien setelah halaman dirender.
   useEffect(() => {
     void loadLiveData()
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void loadLiveData()
+    }, 5 * 60 * 1000)
+    return () => window.clearInterval(timer)
   }, [loadLiveData])
 
   if (!liveData && loadError) {
@@ -641,7 +645,7 @@ function KulakanContent({
             </div>
             <div className="inline-flex items-center gap-2 self-start sm:self-center rounded-full bg-emerald-50 border border-emerald-200/80 px-3.5 py-1.5 text-xs sm:text-sm font-semibold text-emerald-900 shadow-2xs dark:bg-emerald-950/40 dark:border-emerald-800/60 dark:text-emerald-300">
               <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Data live: {formatTanggalPanjang(liveData.tanggal)}</span>
+              <span>{liveData.freshness === 'live' ? 'Data live' : 'Data cadangan'}: {formatTanggalPanjang(liveData.tanggal)}</span>
             </div>
           </div>
 
@@ -720,6 +724,11 @@ function KulakanContent({
 
       {/* Main Container */}
       <main className="mx-auto max-w-6xl space-y-6 px-4 py-8 sm:px-6">
+        {liveData.freshness !== 'live' && (
+          <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+            Sumber harga belum dapat diperbarui. Menampilkan data cadangan tanggal {formatTanggalPanjang(liveData.tanggal)}. Pembaruan dicoba kembali setiap lima menit.
+          </p>
+        )}
         {/* Navigation Tabs */}
         <Tabs value={activeTab} onValueChange={(val) => handleTabChange(val as string)}>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between pb-2">
@@ -1445,7 +1454,7 @@ function KulakanContent({
                           {cheapestMarket.marketName}
                         </div>
                         <div className="text-xs text-muted-foreground mt-0.5">
-                          Data live SISKAPERBAPO &bull; {formatTanggalPanjang(liveData.tanggal)}
+                          {liveData.freshness === 'live' ? 'Data live' : 'Data cadangan'} SISKAPERBAPO &bull; {formatTanggalPanjang(liveData.tanggal)}
                         </div>
                         <div className="mt-3 text-3xl font-extrabold font-mono text-emerald-800 dark:text-emerald-300">
                           {formatRupiah(cheapestMarket.total)}
